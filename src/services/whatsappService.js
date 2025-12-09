@@ -231,7 +231,7 @@ const iniciarWhatsApp = async () => {
                         const numMostrar = cliente.celularReal || cliente.celular;
                         // Aquí preparamos el texto para que tú solo tengas que copiar, pegar y llenar
                         await sock.sendMessage(process.env.GROUP_VERIFICATION_ID, { 
-                            text: `⚠️ *VERIFICACIÓN* ⚠️\n👤 ${cliente.nombres}\n🪪 ${cliente.cedula}\n📱 +${numMostrar}\n\n👇 COPIA Y RESPONDE 👇\n\nACCEDE AL CREDITO=SI\nHASTA GS:` 
+                            text: `⚠️ *VERIFICACIÓN* ⚠️\n👤 ${cliente.nombres}\n🪪 ${cliente.cedula}\n📱 +${numMostrar}\n\n👇 COPIA Y RESPONDE 👇\n\nACCEDE AL CREDITO= \nHASTA GS:` 
                         });
                     }
                     return;

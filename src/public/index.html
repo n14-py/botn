@@ -35,8 +35,12 @@
 </head>
 <body class="animated-bg min-h-screen flex flex-col items-center justify-center p-6 text-slate-800 font-sans selection:bg-blue-500 selection:text-white">
 
-    <div class="w-full max-w-sm glass rounded-[2rem] shadow-2xl p-8 md:p-10 transform transition-all hover:scale-[1.01] duration-300">
+    <div class="w-full max-w-sm glass rounded-[2rem] shadow-2xl p-8 md:p-10 transform transition-all hover:scale-[1.01] duration-300 relative">
         
+        <button id="installBtn" class="hidden absolute top-4 right-4 bg-blue-100 text-blue-600 hover:bg-blue-200 p-2 rounded-xl transition-all shadow-sm active:scale-95" title="Instalar Aplicación">
+            <i class="fas fa-download text-sm"></i> <span class="text-xs font-bold">App</span>
+        </button>
+
         <div class="text-center mb-8">
             <div class="relative inline-block">
                 <div class="h-20 w-20 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-slate-900/20 rotate-3 hover:rotate-0 transition-transform duration-500">
@@ -88,7 +92,57 @@
     </div>
 
     <script>
-        // Verificar sesión existente
+        // --- LÓGICA DE INSTALACIÓN PWA (ANDROID & IOS) ---
+        let deferredPrompt; // Variable para guardar el evento de instalación
+        const installBtn = document.getElementById('installBtn');
+        const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+        // 1. Detectar si es Android/Chrome y se puede instalar
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevenir que Chrome muestre su barra automáticamente
+            e.preventDefault();
+            deferredPrompt = e;
+            // Mostrar nuestro botón
+            installBtn.classList.remove('hidden');
+        });
+
+        // 2. Detectar si es iOS (iPhone/iPad) y no está instalado
+        if (isIos && !isStandalone) {
+            installBtn.classList.remove('hidden');
+        }
+
+        // 3. Acción al hacer clic en el botón
+        installBtn.addEventListener('click', () => {
+            if (isIos) {
+                // Instrucciones para iOS
+                Swal.fire({
+                    title: 'Instalar en iPhone',
+                    html: `
+                        <div class="text-left text-sm text-slate-600 space-y-3">
+                            <p>Para instalar esta app en tu iPhone:</p>
+                            <p>1. Toca el botón <b>Compartir</b> <i class="fas fa-share-square text-blue-500"></i> abajo.</p>
+                            <p>2. Baja y selecciona <b>"Agregar a Inicio"</b> <i class="fas fa-plus-square"></i>.</p>
+                        </div>
+                    `,
+                    icon: 'info',
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#0f172a',
+                    customClass: { popup: 'rounded-2xl' }
+                });
+            } else if (deferredPrompt) {
+                // Instalación automática para Android
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        installBtn.classList.add('hidden');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        });
+
+        // --- LÓGICA DE SESIÓN (LOGIN) ---
         const sesion = localStorage.getItem('usuario');
         if (sesion) {
             try {
@@ -100,7 +154,7 @@
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = e.target.querySelector('button');
+            const btn = e.target.querySelector('button[type="submit"]');
             const originalContent = btn.innerHTML;
             
             // Estado de carga
@@ -123,7 +177,7 @@
                 if (res.ok) {
                     localStorage.setItem('usuario', JSON.stringify(data.usuario));
                     
-                    // Feedback visual de éxito antes de redirigir
+                    // Feedback visual de éxito
                     btn.innerHTML = '<i class="fas fa-check"></i> ¡Bienvenido!';
                     btn.classList.replace('bg-slate-900', 'bg-green-600');
                     
@@ -134,12 +188,10 @@
                     throw new Error(data.msg || 'Credenciales incorrectas');
                 }
             } catch (error) {
-                // Restaurar botón
                 btn.innerHTML = originalContent;
                 btn.disabled = false;
                 btn.classList.remove('opacity-75', 'cursor-not-allowed');
                 
-                // Mostrar error elegante
                 Swal.fire({
                     icon: 'error',
                     title: 'Acceso Denegado',
@@ -149,7 +201,6 @@
                     customClass: { popup: 'rounded-2xl' }
                 });
                 
-                // Vibrar si es móvil
                 if (navigator.vibrate) navigator.vibrate(200);
             }
         });
