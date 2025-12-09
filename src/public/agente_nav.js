@@ -96,40 +96,39 @@ document.getElementById('agentNav').innerHTML = `
     .mobile-link.active span { color: #4f46e5; }
     .mobile-link.active .icon-container { background-color: #eef2ff; }
 </style>
+`;
 
-<script>
-    // Lógica para resaltar dónde estamos
-    const currentPath = window.location.pathname;
-    const allLinks = document.querySelectorAll('a');
-    
-    allLinks.forEach(link => {
-        if(link.getAttribute('href') && currentPath.includes(link.getAttribute('href'))) {
-            link.classList.add('active');
-            
-            // Si es el nav de PC, limpiar clases base
-            if(link.classList.contains('nav-item')) {
-                link.classList.remove('text-slate-500', 'hover:bg-white');
-            }
+// Lógica para resaltar dónde estamos
+const currentPath = window.location.pathname;
+const allLinks = document.querySelectorAll('a');
+
+allLinks.forEach(link => {
+    if(link.getAttribute('href') && currentPath.includes(link.getAttribute('href'))) {
+        link.classList.add('active');
+        
+        // Si es el nav de PC, limpiar clases base
+        if(link.classList.contains('nav-item')) {
+            link.classList.remove('text-slate-500', 'hover:bg-white');
+        }
+    }
+});
+
+// Función Global de Logout
+window.logout = function() {
+    Swal.fire({
+        title: '¿Terminar Turno?',
+        text: "Cerrarás tu sesión actual",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#4f46e5',
+        cancelButtonColor: '#cbd5e1',
+        confirmButtonText: 'Sí, salir',
+        cancelButtonText: 'Cancelar',
+        customClass: { popup: 'rounded-3xl' }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            localStorage.removeItem('usuario');
+            window.location.href = '/index.html';
         }
     });
-
-    function logout() {
-        Swal.fire({
-            title: '¿Terminar Turno?',
-            text: "Cerrarás tu sesión actual",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#4f46e5',
-            cancelButtonColor: '#cbd5e1',
-            confirmButtonText: 'Sí, salir',
-            cancelButtonText: 'Cancelar',
-            customClass: { popup: 'rounded-3xl' }
-        }).then((result) => {
-            if (result.isConfirmed) {
-                localStorage.removeItem('usuario');
-                window.location.href = '/index.html';
-            }
-        });
-    }
-</script>
-`;
+};
