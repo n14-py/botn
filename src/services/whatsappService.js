@@ -301,7 +301,7 @@ const procesarRespuestaAdmin = async (textoAdmin) => {
             cliente.montoAprobado = montoRaw; // Guardamos el monto que pusiste en WhatsApp
             await cliente.save();
             
-            await enviarMensajeTexto(destino, `✅ ¡SÍ accedes al crédito! Tienes aprobado hasta Gs. ${parseInt(montoRaw).toLocaleString('es-PY')}. Un asesor te llamará en breve.`);
+            await enviarMensajeTexto(destino, `✅ ¡SÍ accedes al crédito! Tienes aprobado hasta Gs. ${parseInt(montoRaw).toLocaleString('es-PY')}. Un asesor te contactara en breve.`);
             
             if (process.env.GROUP_SALES_ID) {
                 const numVentas = cliente.celularReal || cliente.celular;
