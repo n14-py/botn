@@ -8,7 +8,6 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <script>
         const sesion = localStorage.getItem('usuario');
@@ -28,8 +27,8 @@
     <main class="max-w-3xl mx-auto p-4 md:p-8 fade-in">
         
         <div class="mb-6">
-            <h1 class="text-2xl font-black text-slate-900 tracking-tight">Carga Masiva</h1>
-            <p class="text-slate-500 text-sm">Importar base de datos desde Excel.</p>
+            <h1 class="text-2xl font-black text-slate-900 tracking-tight">Carga Masiva Inteligente</h1>
+            <p class="text-slate-500 text-sm">Importa cualquier formato de Excel (con o sin cédula).</p>
         </div>
 
         <div id="dropZone" class="group border-2 border-dashed border-slate-300 hover:border-blue-500 bg-white hover:bg-blue-50/30 rounded-3xl p-10 md:p-16 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 relative overflow-hidden">
@@ -39,7 +38,7 @@
             </div>
             
             <h3 class="font-bold text-slate-700 text-lg mb-1">Toca para subir Excel</h3>
-            <p class="text-slate-400 text-xs text-center max-w-xs">Soporta archivos .xlsx y .xls grandes. El sistema procesará los datos automáticamente.</p>
+            <p class="text-slate-400 text-xs text-center max-w-xs">El sistema detectará automáticamente las columnas de Nombres y Teléfonos.</p>
             
             <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls">
         </div>
@@ -48,7 +47,7 @@
             <div class="flex items-center justify-between mb-6">
                 <div>
                     <h3 class="font-bold text-slate-800 flex items-center">
-                        <i class="fas fa-check-circle text-green-500 mr-2"></i> Archivo Listo
+                        <i class="fas fa-check-circle text-green-500 mr-2"></i> Archivo Analizado
                     </h3>
                     <p class="text-xs text-slate-500 mt-1">Filas detectadas: <span id="totalRows" class="font-black text-blue-600 text-sm">0</span></p>
                 </div>
@@ -59,24 +58,19 @@
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Cantidad a importar</label>
                     <input type="number" id="limitRows" class="block w-full p-4 bg-slate-50 border-0 rounded-xl text-slate-900 font-mono font-bold shadow-inner ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-600 transition-all" placeholder="Ej: 5000">
-                    <p class="text-[10px] text-slate-400 mt-2 ml-1">Si dejas el número total, se subirán todos.</p>
+                </div>
+
+                <div class="bg-yellow-50 p-3 rounded-xl border border-yellow-100">
+                    <p class="text-[10px] text-yellow-700 font-medium">
+                        <i class="fas fa-magic mr-1"></i> 
+                        <span id="formatInfo">Detectando formato...</span>
+                    </p>
                 </div>
 
                 <button onclick="uploadData()" class="w-full bg-slate-900 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-900/20 active:scale-[0.98] transition-all flex justify-center items-center group">
                     <i class="fas fa-cloud-upload-alt mr-2 group-hover:-translate-y-1 transition-transform"></i> Procesar Base de Datos
                 </button>
             </div>
-        </div>
-
-        <div class="mt-8 p-4 rounded-2xl bg-blue-50 border border-blue-100">
-            <h4 class="font-bold text-blue-800 text-sm mb-2"><i class="fas fa-info-circle mr-1"></i> Formato Requerido</h4>
-            <p class="text-xs text-blue-600 leading-relaxed">
-                El Excel debe tener estas columnas (mayúsculas o minúsculas):<br>
-                <span class="font-mono bg-blue-100 px-1 rounded">CEDULA</span>, 
-                <span class="font-mono bg-blue-100 px-1 rounded">NOMBRES</span>, 
-                <span class="font-mono bg-blue-100 px-1 rounded">APELLIDOS</span>, 
-                <span class="font-mono bg-blue-100 px-1 rounded">CELULAR</span>.
-            </p>
         </div>
 
     </main>
@@ -111,8 +105,8 @@
             if (!file) return;
             
             Swal.fire({
-                title: 'Leyendo archivo...',
-                text: 'Esto puede tomar unos segundos.',
+                title: 'Analizando Excel...',
+                text: 'Detectando columnas...',
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading(),
                 background: '#fff',
@@ -123,8 +117,23 @@
             reader.onload = (e) => {
                 try {
                     const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
-                    fullData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                    // Leemos raw: false para intentar capturar todo como texto inicialmente
+                    fullData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
                     
+                    if (fullData.length === 0) throw new Error("El archivo está vacío");
+
+                    // Análisis de columnas para mostrar mensaje
+                    const firstRow = fullData[0];
+                    const keys = Object.keys(firstRow).map(k => k.toUpperCase());
+                    let msg = "Formato desconocido";
+                    
+                    if (keys.some(k => k.includes('NOMBRES Y APELLIDOS'))) {
+                        msg = "Formato Nuevo detectado (Nombre junto, Teléfono)";
+                    } else if (keys.includes('NOMBRES') && keys.includes('APELLIDOS')) {
+                        msg = "Formato Clásico detectado (Separado)";
+                    }
+
+                    document.getElementById('formatInfo').innerText = msg;
                     document.getElementById('controls').classList.remove('hidden');
                     document.getElementById('dropZone').classList.add('hidden');
                     
@@ -139,24 +148,80 @@
             reader.readAsArrayBuffer(file);
         }
 
+        // --- FUNCIÓN DE MAPEO INTELIGENTE ---
+        function smartMap(row) {
+            // Normalizamos las claves del objeto (todo a mayúsculas y sin espacios extra)
+            const normalizedRow = {};
+            Object.keys(row).forEach(key => {
+                normalizedRow[key.trim().toUpperCase()] = row[key];
+            });
+
+            // 1. BUSCAR CELULAR (Prioridad: CELULAR -> TELEFONO -> MOVIL -> WHATSAPP)
+            let celular = normalizedRow['CELULAR'] || normalizedRow['TELEFONO'] || normalizedRow['MOVIL'] || normalizedRow['WHATSAPP'];
+            
+            // Limpieza básica del celular
+            if (celular) celular = celular.toString().replace(/\D/g, ''); 
+            
+            // Si no hay celular, esta fila no sirve
+            if (!celular) return null;
+
+            // 2. BUSCAR CÉDULA (Prioridad: CEDULA -> CI -> DOCUMENTO)
+            let cedula = normalizedRow['CEDULA'] || normalizedRow['CI'] || normalizedRow['DOCUMENTO'] || normalizedRow['DNI'];
+            
+            // Si NO tiene cédula (Caso del Excel Nuevo), generamos una ID temporal única basada en el celular
+            // Así el sistema lo acepta y después se puede actualizar.
+            if (!cedula) {
+                cedula = `PENDIENTE-${celular}`;
+            }
+
+            // 3. BUSCAR NOMBRES Y APELLIDOS
+            let nombres = normalizedRow['NOMBRES'] || normalizedRow['NOMBRE'];
+            let apellidos = normalizedRow['APELLIDOS'] || normalizedRow['APELLIDO'];
+
+            // Si no hay columnas separadas, buscamos la columna combinada (Tu caso actual)
+            if (!nombres) {
+                const nombreCompleto = normalizedRow['NOMBRES Y APELLIDOS'] || normalizedRow['NOMBRE Y APELLIDO'] || normalizedRow['CLIENTE'] || normalizedRow['NOMBRE COMPLETO'];
+                
+                if (nombreCompleto) {
+                    // Dividimos por espacios
+                    const partes = nombreCompleto.toString().trim().split(/\s+/);
+                    if (partes.length > 0) {
+                        // Heurística simple: Primera palabra es nombre, el resto apellido
+                        nombres = partes[0]; 
+                        apellidos = partes.slice(1).join(' ');
+                    }
+                }
+            }
+
+            // Valores por defecto para que no rompa la base de datos
+            if (!nombres) nombres = "Cliente";
+            if (!apellidos) apellidos = "";
+
+            return {
+                cedula: cedula.toString().trim(),
+                nombres: nombres.toString().trim(),
+                apellidos: apellidos.toString().trim(),
+                celular: celular
+            };
+        }
+
         async function uploadData() {
             const limit = parseInt(document.getElementById('limitRows').value);
             
             if (!limit || limit <= 0) return Swal.fire('Error', 'Cantidad inválida', 'warning');
 
-            // Mapeo flexible (acepta mayúsculas o minúsculas)
-            const data = fullData.slice(0, limit).map(r => ({
-                cedula: r.CEDULA || r.Cedula || r.cedula,
-                nombres: r.NOMBRES || r.Nombres || r.nombres,
-                apellidos: r.APELLIDOS || r.Apellidos || r.apellidos || '',
-                celular: r.CELULAR || r.Celular || r.celular
-            })).filter(x => x.cedula && x.celular); // Filtro básico de calidad
+            // Procesamos los datos usando la función inteligente
+            const data = [];
+            for (let i = 0; i < Math.min(limit, fullData.length); i++) {
+                const mapped = smartMap(fullData[i]);
+                if (mapped) data.push(mapped);
+            }
 
-            if (data.length === 0) return Swal.fire('Error', 'No se encontraron columnas válidas (CEDULA, CELULAR...)', 'error');
+            if (data.length === 0) return Swal.fire('Error', 'No se encontraron datos válidos (faltan celulares)', 'error');
 
             Swal.fire({
                 title: 'Subiendo a la Nube...',
-                text: `Procesando ${data.length} registros. No cierres la ventana.`,
+                text: `Procesando ${data.length} registros válidos.`,
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading(),
                 background: '#fff',
@@ -184,6 +249,7 @@
                     throw new Error(result.msg);
                 }
             } catch (e) {
+                console.error(e);
                 Swal.fire('Error', 'Fallo en la conexión con el servidor.', 'error');
             }
         }
