@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GFYB - Bandeja de Entrada</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    
+    <script>
+        const sesion = localStorage.getItem('usuario');
+        if (!sesion) window.location.href = '/index.html';
+    </script>
+
+    <style>
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Padding para móviles */
+        body { padding-bottom: 90px; }
+        @media (min-width: 768px) { body { padding-bottom: 0; } }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="agentNav"></div>
+
+    <main class="max-w-5xl mx-auto p-4 md:p-8 fade-in">
+        
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">Solicitudes</h1>
+                <p class="text-slate-500 text-sm">Clientes esperando revisión de cédula.</p>
+            </div>
+            <div class="bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+                <span class="block text-[10px] font-bold text-slate-400 uppercase text-center">Pendientes</span>
+                <span class="block text-xl font-black text-indigo-600 text-center leading-none" id="countPendientes">0</span>
+            </div>
+        </div>
+
+        <div id="listaPendientes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            </div>
+
+        <div id="emptyState" class="hidden flex flex-col items-center justify-center py-20 text-center opacity-60">
+            <div class="h-24 w-24 bg-indigo-50 rounded-full flex items-center justify-center mb-4">
+                <i class="fas fa-check text-4xl text-indigo-300"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-700">¡Todo Limpio!</h3>
+            <p class="text-sm text-slate-500 max-w-xs">No hay clientes nuevos esperando verificación en este momento.</p>
+            <button onclick="cargarPendientes()" class="mt-4 text-indigo-600 font-bold text-sm hover:underline">Actualizar</button>
+        </div>
+
+    </main>
+
+    <div id="modalEval" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                
+                <div class="relative transform overflow-hidden rounded-3xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-md w-full animate-fade-in-up">
+                    
+                    <div class="bg-slate-50 px-4 py-3 sm:px-6 flex justify-between items-center border-b border-slate-100">
+                        <h3 class="text-base font-bold leading-6 text-slate-900" id="modal-title">Evaluar Cliente</h3>
+                        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+                    </div>
+
+                    <div class="px-4 py-5 sm:p-6">
+                        <div class="text-center mb-6">
+                            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 mb-3">
+                                <span class="text-2xl font-black text-indigo-600" id="mAvatar">JP</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-slate-900" id="mNombre">Juan Perez</h3>
+                            <p class="font-mono text-sm text-slate-500 bg-slate-100 inline-block px-2 py-1 rounded-lg mt-1" id="mCedula">CI: 123456</p>
+                            
+                            <div class="mt-2 flex justify-center gap-2">
+                                <a id="mLinkWa" href="#" target="_blank" class="text-[10px] font-bold bg-green-50 text-green-600 px-2 py-1 rounded hover:bg-green-100 transition-colors">
+                                    <i class="fab fa-whatsapp"></i> Ver Chat
+                                </a>
+                                <a id="mLinkFicha" href="#" class="text-[10px] font-bold bg-slate-50 text-slate-600 px-2 py-1 rounded hover:bg-slate-100 transition-colors">
+                                    <i class="fas fa-file-alt"></i> Ver Ficha
+                                </a>
+                            </div>
+                        </div>
+
+                        <input type="hidden" id="mId">
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Monto Aprobado (Gs)</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <span class="text-slate-400 font-bold">Gs.</span>
+                                    </div>
+                                    <input type="text" id="mMonto" class="block w-full pl-10 p-3 bg-white border-2 border-indigo-100 rounded-xl text-lg font-bold text-indigo-600 focus:border-indigo-500 focus:ring-0 outline-none transition-colors" placeholder="0">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Observación (Opcional)</label>
+                                <textarea id="mObs" rows="2" class="block w-full p-3 bg-slate-50 border-0 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 transition-all resize-none" placeholder="Ej: Cliente pide 5 millones..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 px-4 py-4 sm:flex sm:flex-row-reverse sm:px-6 gap-3 grid grid-cols-2">
+                        <button type="button" onclick="guardarEvaluacion('APTO_CREDITO')" class="inline-flex w-full justify-center rounded-xl bg-indigo-600 px-3 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-500 sm:ml-3 sm:w-auto transition-transform active:scale-95">
+                            <i class="fas fa-check mr-2"></i> APROBAR
+                        </button>
+                        <button type="button" onclick="confirmarRechazo()" class="inline-flex w-full justify-center rounded-xl bg-white px-3 py-3 text-sm font-bold text-red-500 shadow-sm ring-1 ring-inset ring-red-100 hover:bg-red-50 sm:mt-0 sm:w-auto transition-transform active:scale-95">
+                            <i class="fas fa-times mr-2"></i> RECHAZAR
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="agente_nav.js"></script>
+    <script>
+        // Formateador de moneda para inputs
+        const inputMonto = document.getElementById('mMonto');
+        inputMonto.addEventListener('input', (e) => {
+            let val = e.target.value.replace(/\D/g, '');
+            e.target.value = val ? parseInt(val).toLocaleString('es-PY') : '';
+        });
+
+        async function cargarPendientes() {
+            const container = document.getElementById('listaPendientes');
+            const counter = document.getElementById('countPendientes');
+            
+            // Skeleton loading (visual)
+            container.innerHTML = '<div class="col-span-full text-center py-10"><i class="fas fa-circle-notch fa-spin text-indigo-500 text-2xl"></i></div>';
+
+            try {
+                const res = await fetch('/api/clientes');
+                const data = await res.json();
+                
+                // Filtramos SOLO los que esperan verificación
+                const pendientes = data.filter(c => c.estado === 'ESPERANDO_VERIFICACION');
+
+                counter.innerText = pendientes.length;
+                container.innerHTML = '';
+
+                if (pendientes.length === 0) {
+                    document.getElementById('emptyState').classList.remove('hidden');
+                    return;
+                }
+                document.getElementById('emptyState').classList.add('hidden');
+
+                pendientes.forEach(c => {
+                    // Diseño de Tarjeta
+                    const card = `
+                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative group active:scale-[0.99] transition-all hover:shadow-md">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">
+                                        ${c.nombres.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <h3 class="font-bold text-slate-800 text-sm truncate w-32 md:w-auto">${c.nombres.split(' ')[0]} ${c.apellidos.split(' ')[0]}</h3>
+                                        <p class="text-xs font-mono text-slate-400 bg-slate-50 px-1 rounded inline-block">${c.cedula}</p>
+                                    </div>
+                                </div>
+                                <span class="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide">Nuevo</span>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-2 mt-4">
+                                <a href="agente_ficha.html?id=${c._id}" class="bg-slate-50 text-slate-600 py-2 rounded-xl text-xs font-bold text-center hover:bg-slate-100 transition-colors">
+                                    <i class="fas fa-eye mr-1"></i> Ficha
+                                </a>
+                                <button onclick='abrirModal(${JSON.stringify(c)})' class="bg-indigo-600 text-white py-2 rounded-xl text-xs font-bold text-center hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all">
+                                    <i class="fas fa-edit mr-1"></i> Evaluar
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += card;
+                });
+            } catch (e) { 
+                console.error(e);
+                container.innerHTML = '<p class="text-red-500 text-center col-span-full">Error de conexión.</p>';
+            }
+        }
+
+        function abrirModal(c) {
+            document.getElementById('mId').value = c._id;
+            document.getElementById('mNombre').innerText = c.nombres;
+            document.getElementById('mCedula').innerText = 'CI: ' + c.cedula;
+            document.getElementById('mAvatar').innerText = c.nombres.charAt(0);
+            
+            // Enlaces dinámicos
+            document.getElementById('mLinkWa').href = `https://wa.me/${c.celularReal || c.celular}`;
+            document.getElementById('mLinkFicha').href = `agente_ficha.html?id=${c._id}`;
+
+            document.getElementById('mMonto').value = '';
+            document.getElementById('mObs').value = '';
+            document.getElementById('modalEval').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('modalEval').classList.add('hidden');
+        }
+
+        async function guardarEvaluacion(estado) {
+            const id = document.getElementById('mId').value;
+            const montoRaw = document.getElementById('mMonto').value.replace(/\./g, ''); // Quitar puntos para enviar número limpio
+            const obs = document.getElementById('mObs').value;
+            
+            if (estado === 'APTO_CREDITO' && (!montoRaw || parseInt(montoRaw) <= 0)) {
+                return Swal.fire({
+                    icon: 'warning',
+                    title: 'Falta el Monto',
+                    text: 'Debes indicar cuánto crédito aprobamos.',
+                    customClass: { popup: 'rounded-2xl' }
+                });
+            }
+
+            const btn = document.querySelector(`button[onclick*="${estado}"]`);
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+            btn.disabled = true;
+
+            try {
+                await fetch(`/api/clientes/${id}`, {
+                    method: 'PUT', 
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        estado, 
+                        montoAprobado: montoRaw || '0', 
+                        observacionAgente: obs 
+                    })
+                });
+                
+                closeModal();
+                cargarPendientes(); // Recargar lista
+                
+                const Toast = Swal.mixin({
+                    toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true
+                });
+                
+                if (estado === 'APTO_CREDITO') {
+                    Toast.fire({ icon: 'success', title: '¡Cliente Aprobado!', text: 'Se movió a la lista de Seguimiento.' });
+                } else {
+                    Toast.fire({ icon: 'info', title: 'Cliente Rechazado', text: 'Se ha descartado la solicitud.' });
+                }
+
+            } catch(e) {
+                Swal.fire('Error', 'No se pudo guardar', 'error');
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+            }
+        }
+
+        function confirmarRechazo() {
+            Swal.fire({
+                title: '¿Rechazar Cliente?',
+                text: "Esta acción lo sacará de la lista.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#cbd5e1',
+                confirmButtonText: 'Sí, rechazar',
+                cancelButtonText: 'Cancelar',
+                customClass: { popup: 'rounded-2xl' }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    guardarEvaluacion('RECHAZADO');
+                }
+            });
+        }
+
+        // Cargar al inicio y cada 15 seg
+        cargarPendientes();
+        setInterval(cargarPendientes, 15000);
+    </script>
+</body>
+</html>

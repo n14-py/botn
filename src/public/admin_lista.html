@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GFYB - Base de Datos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <script>
+        const sesion = localStorage.getItem('usuario');
+        if (!sesion || JSON.parse(sesion).rol !== 'ADMIN') window.location.href = '/index.html';
+    </script>
+
+    <style>
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { padding-bottom: 90px; }
+        @media (min-width: 768px) { body { padding-bottom: 0; } }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="navbar"></div>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-8 fade-in">
+        
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <div class="w-full md:w-auto">
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">Base de Datos</h1>
+                <p class="text-slate-500 text-sm">Visualizando los últimos 100 registros.</p>
+            </div>
+            
+            <div class="w-full md:w-96 relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="fas fa-search text-slate-400"></i>
+                </div>
+                <input type="text" id="searchInput" onkeyup="filtrarTabla()" 
+                    class="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm shadow-sm placeholder:text-slate-400 focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all outline-none" 
+                    placeholder="Buscar por nombre o cédula...">
+            </div>
+        </div>
+
+        <div class="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left whitespace-nowrap">
+                    <thead class="bg-slate-50 border-b border-slate-100 text-xs uppercase text-slate-500 font-bold">
+                        <tr>
+                            <th class="p-4">Cédula</th>
+                            <th class="p-4">Cliente</th>
+                            <th class="p-4">Celular</th>
+                            <th class="p-4">Estado Actual</th>
+                            <th class="p-4 text-right">Monto Crédito</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaBody" class="divide-y divide-slate-100 text-sm"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="listaMovil" class="md:hidden space-y-3"></div>
+
+        <div id="loader" class="text-center py-12">
+            <i class="fas fa-circle-notch fa-spin text-3xl text-blue-600"></i>
+            <p class="text-slate-400 text-xs mt-2 font-bold uppercase tracking-wider">Cargando datos...</p>
+        </div>
+
+    </main>
+
+    <script src="admin_nav.js"></script>
+    <script>
+        let clientesCache = [];
+
+        async function cargarTabla() {
+            try {
+                const res = await fetch('/api/clientes');
+                clientesCache = await res.json();
+                renderizar(clientesCache);
+            } catch(e) {
+                console.error(e);
+            } finally {
+                document.getElementById('loader').classList.add('hidden');
+            }
+        }
+
+        function renderizar(lista) {
+            const tbody = document.getElementById('tablaBody');
+            const movil = document.getElementById('listaMovil');
+            tbody.innerHTML = '';
+            movil.innerHTML = '';
+
+            if(lista.length === 0) {
+                const empty = '<div class="text-center py-8 text-slate-400">No se encontraron resultados.</div>';
+                tbody.innerHTML = `<tr><td colspan="5">${empty}</td></tr>`;
+                movil.innerHTML = empty;
+                return;
+            }
+
+            lista.forEach(c => {
+                // Lógica de Colores (Badges)
+                let badgeClass = 'bg-slate-100 text-slate-600';
+                let icon = '';
+                
+                if(c.estado === 'APTO_CREDITO') { badgeClass = 'bg-blue-100 text-blue-700'; icon = '<i class="fas fa-check mr-1"></i>'; }
+                else if(c.estado === 'PENDIENTE') { badgeClass = 'bg-orange-100 text-orange-700'; icon = '<i class="fas fa-clock mr-1"></i>'; }
+                else if(c.estado === 'CONTACTADO') { badgeClass = 'bg-yellow-100 text-yellow-700'; icon = '<i class="fab fa-whatsapp mr-1"></i>'; }
+                else if(c.estado === 'INTERESADO') { badgeClass = 'bg-indigo-100 text-indigo-700'; icon = '<i class="fas fa-star mr-1"></i>'; }
+                else if(c.estado === 'ESPERANDO_VERIFICACION') { badgeClass = 'bg-purple-100 text-purple-700'; icon = '<i class="fas fa-search mr-1"></i>'; }
+                else if(c.estado === 'VENTA_CONCRETADA') { badgeClass = 'bg-emerald-100 text-emerald-700'; icon = '<i class="fas fa-trophy mr-1"></i>'; }
+                else if(c.estado === 'RECHAZADO') { badgeClass = 'bg-red-100 text-red-600'; icon = '<i class="fas fa-times mr-1"></i>'; }
+
+                const estadoLegible = c.estado.replace(/_/g, ' ');
+                const monto = c.montoAprobado !== '0' ? parseInt(c.montoAprobado).toLocaleString('es-PY') : '-';
+
+                // Desktop Row
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition-colors group">
+                        <td class="p-4 font-mono text-xs text-slate-500 group-hover:text-blue-600">${c.cedula}</td>
+                        <td class="p-4 font-bold text-slate-700">${c.nombres} <span class="text-slate-400 font-normal text-xs ml-1">${c.apellidos}</span></td>
+                        <td class="p-4 text-xs text-slate-500">${c.celular}</td>
+                        <td class="p-4"><span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${badgeClass} border border-transparent">${icon} ${estadoLegible}</span></td>
+                        <td class="p-4 text-right font-mono font-bold text-slate-700">${monto}</td>
+                    </tr>`;
+
+                // Mobile Card
+                movil.innerHTML += `
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.99] transition-transform">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <h3 class="font-bold text-slate-800">${c.nombres}</h3>
+                                <p class="text-xs font-mono text-slate-400">${c.cedula}</p>
+                            </div>
+                            <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase ${badgeClass}">${icon} ${estadoLegible}</span>
+                        </div>
+                        <div class="flex justify-between items-end border-t border-slate-50 pt-2 mt-2">
+                            <div class="text-xs text-slate-500">
+                                <i class="fab fa-whatsapp text-green-500"></i> ${c.celular}
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] text-slate-400 uppercase font-bold">Aprobado</span>
+                                <p class="font-mono font-bold text-slate-700 text-sm">${monto}</p>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function filtrarTabla() {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            const filtrados = clientesCache.filter(c => 
+                (c.nombres && c.nombres.toLowerCase().includes(term)) || 
+                (c.cedula && c.cedula.includes(term))
+            );
+            renderizar(filtrados);
+        }
+
+        cargarTabla();
+    </script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GFYB - Seguimiento</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script>
+        const sesion = localStorage.getItem('usuario');
+        if (!sesion) window.location.href = '/index.html';
+    </script>
+
+    <style>
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { padding-bottom: 90px; }
+        @media (min-width: 768px) { body { padding-bottom: 0; } }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="agentNav"></div>
+
+    <main class="max-w-5xl mx-auto p-4 md:p-8 fade-in">
+        
+        <div class="mb-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">📞 Por Contactar</h1>
+                <p class="text-slate-500 text-sm">Clientes aprobados. ¡Cierra la venta!</p>
+            </div>
+            <div class="bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm flex items-center gap-2">
+                <span class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                <span class="text-xs font-bold text-slate-600" id="countAptos">0 Disponibles</span>
+            </div>
+        </div>
+
+        <div id="listaSeguimiento" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            </div>
+
+        <div id="emptyState" class="hidden text-center py-20 opacity-60">
+            <i class="fas fa-clipboard-check text-6xl text-slate-200 mb-4"></i>
+            <p class="text-slate-400 font-medium">No tienes clientes pendientes de cierre.</p>
+            <a href="agente_inicio.html" class="text-indigo-600 font-bold text-sm mt-2 inline-block">Ir a buscar nuevos</a>
+        </div>
+
+    </main>
+
+    <script src="agente_nav.js"></script>
+    <script>
+        async function cargarSeguimiento() {
+            const container = document.getElementById('listaSeguimiento');
+            container.innerHTML = '<div class="col-span-full text-center py-10"><i class="fas fa-circle-notch fa-spin text-indigo-500 text-2xl"></i></div>';
+
+            try {
+                const res = await fetch('/api/clientes');
+                const data = await res.json();
+                
+                // SOLO TRAEMOS LOS "APTO_CREDITO"
+                const aptos = data.filter(c => c.estado === 'APTO_CREDITO');
+                
+                document.getElementById('countAptos').innerText = aptos.length + ' Disponibles';
+                container.innerHTML = '';
+
+                if (aptos.length === 0) {
+                    document.getElementById('emptyState').classList.remove('hidden');
+                    return;
+                }
+                document.getElementById('emptyState').classList.add('hidden');
+
+                aptos.forEach(c => {
+                    const monto = parseInt(c.montoAprobado).toLocaleString('es-PY');
+                    const nombreCorto = c.nombres.split(' ')[0];
+                    
+                    // Mensaje predefinido para WhatsApp
+                    const mensajeWa = `Hola ${nombreCorto}, te saluda tu asesor de GFYV. Tengo buenas noticias sobre tu solicitud de crédito por Gs. ${monto}. ¿Podemos hablar?`;
+                    const linkWa = `https://wa.me/${c.celularReal || c.celular}?text=${encodeURIComponent(mensajeWa)}`;
+
+                    container.innerHTML += `
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative group">
+                            <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-green-500"></div>
+                            
+                            <div class="p-5 pl-7">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h3 class="font-bold text-slate-900 text-lg">${c.nombres}</h3>
+                                        <p class="text-xs text-slate-400 font-mono">CI: ${c.cedula}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="block text-[10px] font-bold text-slate-400 uppercase">Aprobado</span>
+                                        <span class="block font-black text-green-600 text-lg">Gs. ${monto}</span>
+                                    </div>
+                                </div>
+
+                                <div class="bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
+                                    <p class="text-xs text-slate-500 italic">
+                                        <i class="fas fa-comment-alt mr-1 text-slate-400"></i> 
+                                        "${c.observacionAgente || 'Sin observaciones.'}"
+                                    </p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2">
+                                    <a href="${linkWa}" target="_blank" class="flex items-center justify-center bg-green-50 text-green-700 py-3 rounded-xl font-bold text-sm hover:bg-green-100 transition-colors border border-green-200">
+                                        <i class="fab fa-whatsapp text-lg mr-2"></i> Contactar
+                                    </a>
+                                    
+                                    <div class="flex gap-2">
+                                        <button onclick="cerrarVenta('${c._id}', '${c.nombres}', '${monto}')" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-black shadow-lg shadow-slate-900/20 active:scale-95 transition-all">
+                                            <i class="fas fa-money-bill-wave mr-1"></i> VENTA
+                                        </button>
+                                        <button onclick="descartar('${c._id}')" class="w-12 flex items-center justify-center bg-red-50 text-red-500 rounded-xl hover:bg-red-100 border border-red-100 transition-colors" title="No le interesó">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function cerrarVenta(id, nombre, monto) {
+            const result = await Swal.fire({
+                title: '¿Confirmar Venta?',
+                html: `Cliente: <b>${nombre}</b><br>Monto: <b>Gs. ${monto}</b><br><br>¡Esto sumará a tu comisión!`,
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonColor: '#059669', // Emerald 600
+                cancelButtonColor: '#cbd5e1',
+                confirmButtonText: '¡Sí, Venta Cerrada!',
+                cancelButtonText: 'Cancelar',
+                customClass: { popup: 'rounded-3xl' }
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    await fetch(`/api/clientes/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            estado: 'VENTA_CONCRETADA',
+                            fechaVenta: new Date() // Marca de tiempo para saber cuándo se vendió
+                        })
+                    });
+
+                    Swal.fire({
+                        title: '¡Felicidades!',
+                        text: 'Venta registrada con éxito.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false,
+                        customClass: { popup: 'rounded-2xl' }
+                    });
+                    
+                    cargarSeguimiento(); // Refrescar lista
+
+                } catch (e) {
+                    Swal.fire('Error', 'No se pudo registrar la venta', 'error');
+                }
+            }
+        }
+
+        async function descartar(id) {
+            const result = await Swal.fire({
+                title: '¿Descartar?',
+                text: "El cliente no quiso el crédito.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#cbd5e1',
+                confirmButtonText: 'Sí, descartar',
+                customClass: { popup: 'rounded-2xl' }
+            });
+
+            if (result.isConfirmed) {
+                await fetch(`/api/clientes/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado: 'RECHAZADO', observacionAgente: 'Cliente desistió tras contacto.' })
+                });
+                cargarSeguimiento();
+            }
+        }
+
+        cargarSeguimiento();
+        // Auto-refresh cada 30s por si el admin mete mano
+        setInterval(cargarSeguimiento, 30000);
+    </script>
+</body>
+</html>

@@ -2,28 +2,70 @@ const express = require('express');
 const router = express.Router();
 const Cliente = require('../models/Cliente');
 
-// --- FUNCIÓN PARA CORREGIR NÚMEROS DE PARAGUAY ---
+// --- HELPER: CORREGIR NÚMEROS DE PARAGUAY ---
 const formatearNumeroParaguay = (numero) => {
     if (!numero) return '';
-    
-    // 1. Quitamos espacios, guiones, paréntesis y letras (solo dejamos números)
-    let limpio = numero.toString().replace(/\D/g, '');
-
-    // 2. Lógica para Paraguay
-    // Si empieza con '09', le quitamos el '0' y agregamos '595'
-    if (limpio.startsWith('09')) {
-        return '595' + limpio.substring(1);
-    }
-    // Si empieza con '9' (y no tiene el prefijo), le agregamos '595'
-    else if (limpio.startsWith('9') && limpio.length === 9) {
-        return '595' + limpio;
-    }
-    
-    // Si ya empieza con 595 o no cumple reglas, lo devolvemos limpio
+    let limpio = numero.toString().replace(/\D/g, ''); // Solo números
+    if (limpio.startsWith('09')) return '595' + limpio.substring(1);
+    else if (limpio.startsWith('9') && limpio.length === 9) return '595' + limpio;
     return limpio;
 };
 
-// RUTA: Carga Masiva (Excel o Manual)
+// 1. BUSCADOR INTELIGENTE (Para el Agente)
+// Ruta: GET /api/clientes/buscar?q=juan
+router.get('/buscar', async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q) return res.json([]);
+
+        // Creamos una expresión regular para buscar sin importar mayúsculas/minúsculas
+        const regex = new RegExp(q, 'i');
+
+        const resultados = await Cliente.find({
+            $or: [
+                { nombres: regex },
+                { apellidos: regex },
+                { cedula: regex },
+                { celular: regex },
+                { celularReal: regex }
+            ]
+        }).limit(20); // Limitamos a 20 para que sea rápido
+
+        res.json(resultados);
+
+    } catch (error) {
+        console.error("Error buscando:", error);
+        res.status(500).json({ msg: 'Error en búsqueda' });
+    }
+});
+
+// 2. ACTUALIZAR ESTADO Y MONTO (Aprobar/Rechazar)
+// Ruta: PUT /api/clientes/:id
+router.put('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { estado, montoAprobado, observacionAgente } = req.body;
+
+        const clienteActualizado = await Cliente.findByIdAndUpdate(id, {
+            estado,
+            montoAprobado,
+            observacionAgente,
+            fechaGestion: new Date() // Guardamos cuándo se gestionó
+        }, { new: true });
+
+        if (!clienteActualizado) {
+            return res.status(404).json({ msg: 'Cliente no encontrado' });
+        }
+
+        res.json({ ok: true, cliente: clienteActualizado });
+
+    } catch (error) {
+        console.error("Error actualizando:", error);
+        res.status(500).json({ msg: 'Error actualizando cliente' });
+    }
+});
+
+// 3. CARGA MASIVA (Excel o Manual) - OPTIMIZADA
 router.post('/', async (req, res) => {
     try {
         const { clientes } = req.body;
@@ -32,22 +74,27 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ msg: 'No se enviaron datos' });
         }
 
-        console.log(`📥 Procesando ${clientes.length} clientes...`);
+        console.log(`📥 Procesando carga masiva de ${clientes.length} registros...`);
 
-        // Preparamos la operación masiva con el número CORREGIDO
+        // Preparamos operaciones para Mongo (BulkWrite es ultra rápido para miles de datos)
         const operaciones = clientes.map(c => {
             const celularCorregido = formatearNumeroParaguay(c.celular);
 
             return {
                 updateOne: {
                     filter: { cedula: c.cedula }, 
+                    // Si existe, actualizamos nombres/celular. Si no, se crea.
                     update: { 
                         $set: {
                             nombres: c.nombres,
                             apellidos: c.apellidos,
-                            celular: celularCorregido, // <--- AQUÍ GUARDAMOS EL 595
+                            celular: celularCorregido, 
+                            // IMPORTANTE: No sobrescribimos el estado si ya estaba gestionado
                         },
-                        $setOnInsert: { estado: 'PENDIENTE' }
+                        $setOnInsert: { 
+                            estado: 'PENDIENTE',
+                            fechaCarga: new Date()
+                        }
                     },
                     upsert: true 
                 }
@@ -58,18 +105,18 @@ router.post('/', async (req, res) => {
 
         res.json({
             ok: true,
-            msg: 'Carga completada y números corregidos',
+            msg: 'Procesado correctamente',
             nuevos: resultado.upsertedCount,
             actualizados: resultado.modifiedCount
         });
 
     } catch (error) {
-        console.error("❌ Error guardando clientes:", error);
+        console.error("❌ Error en carga masiva:", error);
         res.status(500).json({ msg: 'Error interno del servidor' });
     }
 });
 
-// RUTA: Obtener lista
+// 4. LISTA GENERAL (Para el Admin - Últimos 100)
 router.get('/', async (req, res) => {
     try {
         const lista = await Cliente.find().sort({ fechaCarga: -1 }).limit(100);

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GFYB - Mis Ganancias</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script>
+        const sesion = localStorage.getItem('usuario');
+        if (!sesion) window.location.href = '/index.html';
+    </script>
+
+    <style>
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { padding-bottom: 90px; }
+        @media (min-width: 768px) { body { padding-bottom: 0; } }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="agentNav"></div>
+
+    <main class="max-w-4xl mx-auto p-4 md:p-8 fade-in">
+        
+        <div class="mb-6">
+            <h1 class="text-2xl font-black text-slate-900 tracking-tight">Mis Logros</h1>
+            <p class="text-slate-500 text-sm">Tu rendimiento y comisiones acumuladas.</p>
+        </div>
+
+        <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-8 text-white shadow-xl shadow-slate-900/20 mb-8 relative overflow-hidden">
+            <div class="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-yellow-400 rounded-full mix-blend-overlay filter blur-3xl opacity-20 animate-pulse"></div>
+            
+            <div class="relative z-10 flex items-center justify-between">
+                <div>
+                    <p class="text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-1">Comisiones Totales</p>
+                    <div class="flex items-baseline">
+                        <span class="text-xl font-bold text-yellow-400 mr-1">Gs.</span>
+                        <h1 class="text-5xl font-black font-mono tracking-tighter" id="gananciaTotal">0</h1>
+                    </div>
+                    <div class="mt-4 inline-flex items-center bg-white/10 rounded-lg px-3 py-1.5 backdrop-blur-sm border border-white/5">
+                        <i class="fas fa-star text-yellow-400 text-xs mr-2"></i>
+                        <span class="text-xs font-bold text-slate-200"><span id="ventasCount">0</span> Ventas Cerradas</span>
+                    </div>
+                </div>
+                
+                <div class="hidden sm:flex h-20 w-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-2xl items-center justify-center shadow-lg transform rotate-3 hover:rotate-0 transition-all duration-500">
+                    <i class="fas fa-trophy text-3xl text-white"></i>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="font-bold text-slate-800 mb-4 flex items-center">
+            <i class="fas fa-history text-slate-400 mr-2"></i> Historial de Ventas
+        </h3>
+
+        <div class="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 border-b border-slate-100 text-xs uppercase text-slate-500 font-bold">
+                    <tr>
+                        <th class="p-4">Cliente</th>
+                        <th class="p-4 text-center">Crédito</th>
+                        <th class="p-4 text-right">Fecha</th>
+                        <th class="p-4 text-right">Tu Comisión</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaVentas" class="divide-y divide-slate-100 text-sm"></tbody>
+            </table>
+        </div>
+
+        <div id="listaMovil" class="md:hidden space-y-3"></div>
+
+        <div id="emptyState" class="hidden text-center py-12">
+            <div class="h-20 w-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-chart-line text-3xl text-slate-300"></i>
+            </div>
+            <p class="text-slate-500 font-medium text-sm">Aún no tienes ventas registradas.</p>
+            <p class="text-xs text-slate-400 mt-1">¡Ve a "Seguimiento" y cierra tu primera venta!</p>
+        </div>
+
+    </main>
+
+    <script src="agente_nav.js"></script>
+    <script>
+        fetch('/api/clientes').then(r => r.json()).then(data => {
+            // Filtrar SOLO VENTAS CONFIRMADAS
+            const ventas = data.filter(c => c.estado === 'VENTA_CONCRETADA');
+            
+            // Cálculo: 500.000 Gs por venta
+            const total = ventas.length * 500000;
+            
+            // Animación de números
+            document.getElementById('gananciaTotal').innerText = total.toLocaleString('es-PY');
+            document.getElementById('ventasCount').innerText = ventas.length;
+
+            const tbody = document.getElementById('tablaVentas');
+            const movil = document.getElementById('listaMovil');
+            
+            tbody.innerHTML = '';
+            movil.innerHTML = '';
+
+            if (ventas.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                return;
+            }
+
+            // Ordenar por fecha reciente
+            ventas.sort((a, b) => new Date(b.fechaVenta || 0) - new Date(a.fechaVenta || 0));
+
+            ventas.forEach(v => {
+                const fecha = v.fechaVenta ? new Date(v.fechaVenta).toLocaleDateString() : 'Hoy';
+                const montoCredito = parseInt(v.montoAprobado).toLocaleString('es-PY');
+
+                // Fila PC
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-4 font-bold text-slate-800">${v.nombres}</td>
+                        <td class="p-4 text-center font-mono text-slate-500 text-xs">Gs. ${montoCredito}</td>
+                        <td class="p-4 text-right text-xs text-slate-400">${fecha}</td>
+                        <td class="p-4 text-right font-black text-green-600">+ 500.000</td>
+                    </tr>
+                `;
+
+                // Tarjeta Móvil
+                movil.innerHTML += `
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">${v.nombres}</h4>
+                            <p class="text-[10px] text-slate-400">Crédito: Gs. ${montoCredito} • ${fecha}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="block font-black text-green-600 text-lg">+ 500.000</span>
+                            <span class="text-[10px] font-bold text-green-600/60 bg-green-50 px-2 py-0.5 rounded-full">COMISIÓN</span>
+                        </div>
+                    </div>
+                `;
+            });
+        });
+    </script>
+</body>
+</html>

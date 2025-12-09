@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GFYB - Configuración Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script>
+        const sesion = localStorage.getItem('usuario');
+        if (!sesion || JSON.parse(sesion).rol !== 'ADMIN') window.location.href = '/index.html';
+    </script>
+
+    <style>
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Switch Toggle personalizado */
+        .toggle-checkbox:checked { right: 0; border-color: #4f46e5; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #4f46e5; }
+        
+        body { padding-bottom: 90px; }
+        @media (min-width: 768px) { body { padding-bottom: 0; } }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800">
+    <div id="navbar"></div>
+
+    <main class="max-w-2xl mx-auto p-4 md:p-8 fade-in">
+        
+        <div class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight">Cerebro del Bot</h1>
+                <p class="text-slate-500 text-sm">Controla cuándo y cuánto trabaja la IA.</p>
+            </div>
+            <div class="bg-indigo-100 p-3 rounded-full text-indigo-600">
+                <i class="fas fa-robot text-xl"></i>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 md:p-8 border border-slate-100">
+            <form id="configForm" class="space-y-8">
+                
+                <div>
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                        <i class="fas fa-clock mr-2"></i> Horario de Atención
+                    </h3>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-500 mb-2">Inicio (AM)</label>
+                            <div class="flex items-center">
+                                <input type="number" id="horaInicio" class="w-full bg-transparent text-3xl font-black text-slate-800 outline-none text-center" min="0" max="23" placeholder="08">
+                                <span class="text-sm font-bold text-slate-400 ml-1">:00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <label class="block text-xs font-bold text-slate-500 mb-2">Fin (PM)</label>
+                            <div class="flex items-center">
+                                <input type="number" id="horaFin" class="w-full bg-transparent text-3xl font-black text-slate-800 outline-none text-center" min="0" max="23" placeholder="18">
+                                <span class="text-sm font-bold text-slate-400 ml-1">:00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-2 text-center">El bot pausará automáticamente fuera de este rango.</p>
+                </div>
+
+                <hr class="border-slate-100">
+
+                <div>
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center">
+                        <i class="fas fa-shield-virus mr-2"></i> Seguridad (Anti-Bloqueo)
+                    </h3>
+                    
+                    <div class="bg-orange-50 p-5 rounded-2xl border border-orange-100 flex items-center justify-between">
+                        <div>
+                            <label class="block text-sm font-bold text-orange-800 mb-1">Límite Diario de Mensajes</label>
+                            <p class="text-xs text-orange-600/80">Máximo de contactos nuevos por día.</p>
+                        </div>
+                        <div class="w-24 bg-white rounded-xl border border-orange-200 flex items-center px-3 py-2 shadow-sm">
+                            <input type="number" id="limite" class="w-full bg-transparent text-xl font-bold text-orange-600 text-center outline-none" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button type="button" onclick="save()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 active:scale-[0.98] transition-all flex justify-center items-center group">
+                        <span class="mr-2">Actualizar Configuración</span>
+                        <i class="fas fa-check-circle group-hover:scale-110 transition-transform"></i>
+                    </button>
+                </div>
+
+            </form>
+        </div>
+    </main>
+
+    <script src="admin_nav.js"></script>
+    <script>
+        // Cargar datos actuales
+        fetch('/api/config').then(r => r.json()).then(data => {
+            document.getElementById('horaInicio').value = data.horaInicio;
+            document.getElementById('horaFin').value = data.horaFin;
+            document.getElementById('limite').value = data.limiteDiario;
+        }).catch(() => {
+            Swal.fire('Error', 'No se pudo cargar la configuración', 'error');
+        });
+
+        async function save() {
+            const btn = document.querySelector('button');
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Guardando...';
+            btn.disabled = true;
+            btn.classList.add('opacity-75');
+
+            const data = {
+                horaInicio: document.getElementById('horaInicio').value,
+                horaFin: document.getElementById('horaFin').value,
+                limiteDiario: document.getElementById('limite').value
+            };
+
+            try {
+                const res = await fetch('/api/config', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Bot Actualizado',
+                        text: 'Los nuevos parámetros ya están activos.',
+                        timer: 2000,
+                        showConfirmButton: false,
+                        customClass: { popup: 'rounded-2xl' }
+                    });
+                } else {
+                    Swal.fire('Error', 'No se guardaron los cambios', 'error');
+                }
+            } catch (e) {
+                Swal.fire('Error', 'Fallo de conexión', 'error');
+            } finally {
+                btn.innerHTML = original;
+                btn.disabled = false;
+                btn.classList.remove('opacity-75');
+            }
+        }
+    </script>
+</body>
+</html>

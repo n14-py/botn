@@ -6,21 +6,24 @@ const connectDB = require('./config/db');
 const { iniciarWhatsApp, getQr, getStatus } = require('./services/whatsappService');
 const { procesarCola } = require('./services/queueService');
 
+// Importar Rutas
 const clientesRoutes = require('./routes/clientes'); 
 const configRoutes = require('./routes/config'); 
+const authRoutes = require('./routes/auth'); // <--- NUEVA IMPORTACIÓN
 
 const app = express();
 
 // --- Middlewares ---
 app.use(cors()); 
-app.use(express.json({ limit: '50mb' })); 
+app.use(express.json({ limit: '50mb' })); // Límite alto para tus cargas masivas de Excel
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// --- RUTAS ---
+// --- RUTAS API ---
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/config', configRoutes); 
+app.use('/api/auth', authRoutes); // <--- CONECTAMOS EL LOGIN AQUÍ
 
-// Endpoint de Estado
+// Endpoint de Estado del Bot
 app.get('/api/status', async (req, res) => {
     res.json({
         status: getStatus(),
@@ -34,17 +37,6 @@ const startServer = async () => {
         // 1. Conectar Base de Datos
         await connectDB();
         
-        // ====================================================================
-        // 🚨 ZONA DE EMERGENCIA: SI SIGUE EN BUCLE, DESCOMENTA ESTAS 4 LÍNEAS
-        // Para descomentar: quita las dos barras "//" del inicio de las líneas de abajo.
-        
-        // const mongoose = require('mongoose');
-        // console.log('☢️ BORRANDO SESIÓN MANUALMENTE...');
-        // await mongoose.connection.collection('sesion_whatsapp').drop();
-        // console.log('✅ SESIÓN BORRADA. Reiniciando para pedir QR...');
-        
-        // ====================================================================
-
         // 2. Iniciar WhatsApp
         await iniciarWhatsApp();
 

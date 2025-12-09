@@ -1,0 +1,24 @@
+
+{
+  "name": "Gestion Financiera",
+  "short_name": "GFYV",
+  "description": "GESTION FINANCIERA Y VENTAS",
+  "icons": [
+    {
+      "src": "https://static.vecteezy.com/system/resources/previews/000/617/340/non_2x/vector-illustration-in-flat-style-finance-growing-concept.jpg",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://static.vecteezy.com/system/resources/previews/000/617/340/non_2x/vector-illustration-in-flat-style-finance-growing-concept.jpg",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "display": "standalone",
+  "background_color": "#2a9d8f",
+  "theme_color": "#2a9d8f",
+  "start_url": "/",
+  "scope": "/",
+  "orientation": "portrait"
+}
