@@ -1,20 +1,27 @@
-const { makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, makeInMemoryStore, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 const pino = require('pino');
+const mongoose = require('mongoose');
 const Cliente = require('../models/Cliente');
 const { generarRespuestaIA } = require('./aiService');
 const { useMongoDBAuthState } = require('./mongoAuthState');
-const mongoose = require('mongoose');
+const { revelarDatos } = require('../utils/secret'); 
+
+// --- 1. CONFIGURACIÓN DE MEMORIA (EL "TRUCO" DE LA HERRAMIENTA) ---
+const baileys = require('@whiskeysockets/baileys');
+const makeStore = baileys.makeInMemoryStore || baileys.default?.makeInMemoryStore;
+const store = makeStore ? makeStore({ 
+    logger: pino().child({ level: 'silent', stream: 'store' }) 
+}) : null;
 
 let sock;
 let qrCodeUrl = null;
 let connectionStatus = 'disconnected';
 
-// --- FUNCIÓN EXTRACTORA DE TEXTO "TODO TERRENO" ---
+// --- HELPERS ---
 const obtenerTextoMensaje = (msg) => {
     if (!msg.message) return null;
     const mensajeReal = msg.message.ephemeralMessage?.message || msg.message.viewOnceMessage?.message || msg.message;
-    
     return (
         mensajeReal.conversation || 
         mensajeReal.extendedTextMessage?.text || 
@@ -22,6 +29,120 @@ const obtenerTextoMensaje = (msg) => {
         mensajeReal.videoMessage?.caption || 
         null
     );
+};
+
+const obtenerTextoCitado = (msg) => {
+    if (!msg.message) return null;
+    const mensajeReal = msg.message.ephemeralMessage?.message || msg.message.viewOnceMessage?.message || msg.message;
+    const quoted = mensajeReal.extendedTextMessage?.contextInfo?.quotedMessage;
+    if (!quoted) return null;
+    return quoted.conversation || quoted.extendedTextMessage?.text || null;
+};
+
+// --- LÓGICA DE FUSIÓN DE CLIENTES (IMPORTANTE) ---
+// Esto ocurre cuando un "Temporal" nos da una cédula que YA existía en la base de datos
+const fusionarClientes = async (clienteTemporal, clienteReal, lid) => {
+    console.log(`⚡ FUSIONANDO: Temporal (${clienteTemporal.cedula}) -> Real (${clienteReal.cedula})`);
+    
+    // 1. Pasamos el historial del temporal al real para no perder la charla
+    if (clienteTemporal.historialChat && clienteTemporal.historialChat.length > 0) {
+        clienteReal.historialChat.push(...clienteTemporal.historialChat);
+    }
+
+    // 2. Guardamos los datos de conexión en el real
+    clienteReal.lid = lid;
+    if (!clienteReal.celularReal) clienteReal.celularReal = clienteReal.celular; // Guardamos el 595 original
+    clienteReal.celular = lid; // Actualizamos para poder responderle
+    
+    // 3. Actualizamos estado
+    clienteReal.estado = 'ESPERANDO_VERIFICACION';
+    clienteReal.cedulaProporcionada = clienteReal.cedula; // Confirmamos cédula
+
+    await clienteReal.save();
+
+    // 4. Borramos el temporal para no tener basura
+    await Cliente.deleteOne({ _id: clienteTemporal._id });
+    
+    return clienteReal;
+};
+
+// --- IDENTIFICADOR SUPREMO ---
+const identificarOcrearCliente = async (remoteJid, numeroEntrante, pushName, msg) => {
+    console.log(`🕵️‍♂️ Procesando ID: ${numeroEntrante} (${pushName})...`);
+
+    // 1. BUSCAR SI YA LO CONOCEMOS (Por LID o Celular)
+    let cliente = await Cliente.findOne({ 
+        $or: [
+            { lid: numeroEntrante }, 
+            { celular: { $regex: numeroEntrante + '$' } },
+            // Si es un temporal que creamos hace un rato
+            { cedula: `TEMP-${numeroEntrante}` } 
+        ]
+    });
+    if (cliente) return cliente;
+
+    // 2. EL TRUCO DE LA HERRAMIENTA (Agenda de Baileys)
+    // Buscamos si WhatsApp ya sabe quién es este LID
+    if (store && store.contacts) {
+        const contacto = Object.values(store.contacts).find(c => c.id === remoteJid || c.lid === remoteJid); // Ajuste aquí para búsqueda exacta
+        
+        // A veces el ID real está en otra propiedad dependiendo de la versión de Baileys
+        // Intentamos buscar cruces en la agenda
+        if (contacto) {
+           console.log("📒 Contacto encontrado en Store:", contacto);
+           // Si el contacto tiene un 'id' que parece un número normal (sin @lid)
+           const posibleNumero = contacto.id?.replace('@s.whatsapp.net', '').replace('@lid', '');
+           if (posibleNumero && posibleNumero !== numeroEntrante) {
+               console.log(`💡 Truco Agenda: LID ${numeroEntrante} es ${posibleNumero}`);
+               cliente = await Cliente.findOne({ celular: { $regex: posibleNumero + '$' } });
+               if (cliente) {
+                   cliente.lid = numeroEntrante;
+                   cliente.celularReal = cliente.celular;
+                   cliente.celular = numeroEntrante;
+                   await cliente.save();
+                   return cliente;
+               }
+           }
+        }
+    }
+
+    // 3. MENSAJE SECRETO (Historial)
+    if (store) {
+        try {
+            const historial = await store.loadMessages(remoteJid, 20);
+            for (const m of historial.reverse()) {
+                if (m.key.fromMe) {
+                    const txt = obtenerTextoMensaje(m);
+                    const secreto = revelarDatos(txt);
+                    if (secreto) {
+                        console.log(`💎 Secreto hallado: ${secreto}`);
+                        cliente = await Cliente.findOne({ cedula: secreto });
+                        if (cliente) {
+                            cliente.lid = numeroEntrante;
+                            cliente.celularReal = cliente.celular;
+                            cliente.celular = numeroEntrante;
+                            await cliente.save();
+                            return cliente;
+                        }
+                    }
+                }
+            }
+        } catch(e) {}
+    }
+
+    // 4. SI FALLA TODO -> CREAR CLIENTE TEMPORAL (Para seguir la charla)
+    console.log(`👻 Usuario desconocido. Creando FICHA TEMPORAL para averiguar quién es.`);
+    const nuevoTemporal = new Cliente({
+        cedula: `TEMP-${numeroEntrante}`, // ID temporal único
+        nombres: pushName || "Usuario WhatsApp",
+        apellidos: "",
+        celular: numeroEntrante,
+        lid: numeroEntrante,
+        estado: 'PENDIENTE', // Para que la IA le hable
+        esTemporal: true
+    });
+    await nuevoTemporal.save();
+    return nuevoTemporal;
 };
 
 const iniciarWhatsApp = async () => {
@@ -32,9 +153,11 @@ const iniciarWhatsApp = async () => {
     sock = makeWASocket({
         logger: pino({ level: 'silent' }),
         auth: state,
-        browser: ["Ubuntu", "Chrome", "20.0.04"], // <--- NUEVA CONFIGURACIÓN
-        syncFullHistory: false,
+        browser: ["Ubuntu", "Chrome", "20.0.04"], 
+        syncFullHistory: true, // Activamos full history para que el truco de la agenda funcione mejor
     });
+
+    if (store) store.bind(sock.ev);
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -47,23 +170,16 @@ const iniciarWhatsApp = async () => {
 
         if (connection === 'close') {
             const statusCode = (lastDisconnect.error)?.output?.statusCode;
-            
-            // --- MODIFICACIÓN IMPORTANTE AQUÍ ---
-            // Agregamos 401 y 403 para detectar cuando la sesión fue invalidada desde el celular
             const shouldLogout = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403;
             
             if (shouldLogout) {
-                console.log(`🛑 Sesión cerrada o inválida (Error: ${statusCode}). Borrando credenciales y reiniciando...`);
-                // Esto borra la sesión corrupta de MongoDB
+                console.log(`🛑 Sesión cerrada. Reiniciando...`);
                 await clearCreds(); 
-                
-                // Reiniciamos inmediatamente para que genere el nuevo QR
                 iniciarWhatsApp();
             } else {
-                console.log('🔄 Desconexión temporal. Reconectando...');
+                console.log('🔄 Reconectando...');
                 iniciarWhatsApp();
             }
-        
         } else if (connection === 'open') {
             console.log('✅ WHATSAPP CONECTADO');
             connectionStatus = 'connected';
@@ -74,6 +190,12 @@ const iniciarWhatsApp = async () => {
 
     sock.ev.on('creds.update', saveCreds);
 
+    // Escuchar actualizaciones de contactos (Para llenar la Agenda "Truco")
+    sock.ev.on('contacts.upsert', (contacts) => {
+        // Solo para debug, ver si llegan los datos
+        // console.log(`📒 Sincronizados ${contacts.length} contactos`);
+    });
+
     sock.ev.on('messages.upsert', async ({ messages }) => {
         try {
             const msg = messages[0];
@@ -81,211 +203,147 @@ const iniciarWhatsApp = async () => {
 
             const remoteJid = msg.key.remoteJid;
             const pushName = msg.pushName || ""; 
-            
-            // 1. OBTENER TEXTO
             const textoBruto = obtenerTextoMensaje(msg);
             const textoUsuario = textoBruto ? textoBruto.trim() : null;
 
             if (!textoUsuario) return;
+            if (/horarios y días|gracias por comunicarte|agenda tu cita|mensaje automático|en breve/i.test(textoUsuario)) return;
 
-            // --- FILTRO ANTI-BUCLE ---
-            const frasesBot = /horarios y días disponibles|gracias por comunicarte|agenda tu cita|mensaje automático|en breve te atenderemos/i;
-            if (frasesBot.test(textoUsuario)) {
-                console.log(`🤖 IGNORADO: Auto-respuesta Business ("${textoUsuario.substring(0,30)}...")`);
-                return;
-            }
-
-            // --- GRUPO VERIFICACIÓN ---
+            // GRUPO ADMIN
             if (remoteJid === process.env.GROUP_VERIFICATION_ID) {
-                if (textoUsuario.includes("ACCEDE AL CREDITO=")) {
-                    await procesarRespuestaAdmin(textoUsuario);
-                }
+                if (textoUsuario.includes("ACCEDE AL CREDITO=")) await procesarRespuestaAdmin(textoUsuario);
                 return; 
             }
 
-            // --- CHAT PRIVADO ---
+            // CHAT PRIVADO
             const esChatNormal = remoteJid.endsWith('@s.whatsapp.net');
             const esChatLid = remoteJid.endsWith('@lid');
-
             if (!esChatNormal && !esChatLid) return;
 
             let numeroEntrante = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').split(':')[0];
-            const sufijoNumero = numeroEntrante.slice(-8); 
 
             // ============================================================
-            // 🔍 BÚSQUEDA Y VINCULACIÓN BLINDADA
+            // 🕵️‍♂️ IDENTIFICACIÓN O CREACIÓN
             // ============================================================
+            let cliente = await identificarOcrearCliente(remoteJid, numeroEntrante, pushName, msg);
+
+            console.log(`📨 Mensaje de: ${cliente.nombres} (${cliente.esTemporal ? 'TEMPORAL' : 'VERIFICADO'})`);
+
+            // ============================================================
+            // 🧠 LÓGICA DE CÉDULA (EL MOMENTO DE LA VERDAD)
+            // ============================================================
+            const matchCI = textoUsuario.match(/\b\d{1,3}(\.?\d{3}){1,2}\b/);
             
-            // INTENTO 1: Por Celular
-            let cliente = await Cliente.findOne({ 
-                celular: { $regex: sufijoNumero + '$' } 
-            });
-
-            // INTENTO 2: POR NOMBRE (Con Seguridad Anti-Colisión)
-            if (!cliente && pushName) {
-                const palabrasNombre = pushName.split(' ').filter(p => p.length > 3);
+            if (matchCI) {
+                const ciLimpia = matchCI[0].replace(/\./g, '');
                 
-                if (palabrasNombre.length > 0) {
-                    const regexNombre = new RegExp(palabrasNombre.join('|'), 'i');
+                // Si es un cliente TEMPORAL y nos da su cédula, buscamos si existe la REAL
+                if (cliente.esTemporal) {
+                    const clienteReal = await Cliente.findOne({ cedula: ciLimpia });
                     
-                    const haceDosDias = new Date();
-                    haceDosDias.setDate(haceDosDias.getDate() - 2);
-
-                    const candidatos = await Cliente.find({
-                        $or: [{ nombres: regexNombre }, { apellidos: regexNombre }],
-                        estado: 'CONTACTADO',
-                        historialChat: { $size: 0 },
-                        fechaCarga: { $gte: haceDosDias } 
-                    });
-
-                    if (candidatos.length === 1) {
-                        cliente = candidatos[0];
-                        console.log(`🔗 VINCULACIÓN SEGURA: "${pushName}" es único. Match con ${cliente.nombres}`);
-                        
-                        if (!cliente.celularReal) cliente.celularReal = cliente.celular;
-                        cliente.celular = numeroEntrante;
-                        await cliente.save();
-
-                    } else if (candidatos.length > 1) {
-                        console.log(`⚠️ AMBIGÜEDAD DETECTADA: Hay ${candidatos.length} clientes que coinciden con "${pushName}". NO se vinculará automáticamente.`);
-                    }
-                }
-            }
-
-            // INTENTO 3: Por Cédula (Desempate final)
-            if (!cliente) {
-                const posibleCedulaMatch = textoUsuario.match(/\b\d{1,3}(\.?\d{3}){1,2}\b/);
-                if (posibleCedulaMatch) {
-                    const cedulaLimpia = posibleCedulaMatch[0].replace(/\./g, '');
-                    cliente = await Cliente.findOne({ cedula: cedulaLimpia });
-                    
-                    if (cliente) {
-                        console.log(`🔗 VINCULACIÓN POR CÉDULA: ${cliente.nombres}`);
-                        if (!cliente.celularReal) cliente.celularReal = cliente.celular;
-                        cliente.celular = numeroEntrante;
+                    if (clienteReal) {
+                        // ¡EXISTE! FUSIONAMOS TODO
+                        cliente = await fusionarClientes(cliente, clienteReal, numeroEntrante);
+                        await sock.sendMessage(remoteJid, { text: `✅ Gracias ${cliente.nombres}, te he identificado correctamente.` });
+                    } else {
+                        // ES NUEVO DE VERDAD. Lo convertimos en real.
+                        cliente.cedula = ciLimpia;
+                        cliente.esTemporal = false;
+                        cliente.nombres = pushName || "Nuevo Cliente";
                         await cliente.save();
                     }
                 }
-            }
 
-            console.log(`📨 Recibido de: ${numeroEntrante} | Cliente: ${cliente ? cliente.nombres : '❌ NO ENCONTRADO'}`);
+                // PROCESO NORMAL DE VERIFICACIÓN
+                if (cliente.estado !== 'RECHAZADO' && cliente.estado !== 'APTO_CREDITO') {
+                    cliente.cedulaProporcionada = ciLimpia;
+                    if (cliente.cedula.includes('PENDIENTE')) cliente.cedula = ciLimpia;
+                    
+                    cliente.estado = 'ESPERANDO_VERIFICACION';
+                    await cliente.save();
 
-            // CASO: NO ENCONTRADO
-            if (!cliente) {
-                if (/hola|info|interesa|quiero|buenas/i.test(textoUsuario)) {
-                    console.log('❓ ID Desconocido y nombre ambiguo/no encontrado. Pidiendo Cédula...');
-                    await sock.sendPresenceUpdate('composing', remoteJid);
-                    setTimeout(async () => {
-                        await sock.sendMessage(remoteJid, { 
-                            text: "Hola 👋🏼, para poder ubicar tu ficha correctamente, por favor escríbeme tu *Número de Cédula*." 
+                    await sock.sendMessage(remoteJid, { text: `✅ Recibido. Verificando calificación...` });
+                    
+                    if (process.env.GROUP_VERIFICATION_ID) {
+                        const numMostrar = cliente.celularReal || cliente.celular;
+                        await sock.sendMessage(process.env.GROUP_VERIFICATION_ID, { 
+                            text: `⚠️ *VERIFICACIÓN* ⚠️\n👤 ${cliente.nombres}\n🪪 ${cliente.cedula}\n📱 +${numMostrar}\n\nACCEDE AL CREDITO=` 
                         });
-                    }, 2000);
+                    }
+                    return;
                 }
-                return;
             }
 
-            // ============================================================
-            // 🚀 PROCESAMIENTO
-            // ============================================================
-
-            // 1. Detector de Cédula
-            const matchCedula = textoUsuario.match(/\b\d{1,3}(\.?\d{3}){1,2}\b/);
+            // SI ESTÁ EN MODO TEMPORAL, LA IA DEBE PEDIR CÉDULA
+            // (Esto ya lo hace tu aiService.js si el estado es PENDIENTE)
             
-            if (matchCedula && cliente.estado !== 'RECHAZADO' && cliente.estado !== 'APTO_CREDITO') {
-                const cedulaLimpia = matchCedula[0].replace(/\./g, '');
-                
-                cliente.cedulaProporcionada = cedulaLimpia;
-                if (!cliente.cedula || cliente.cedula === '0' || cliente.cedula.includes('PENDIENTE')) {
-                    cliente.cedula = cedulaLimpia;
-                }
-
-                cliente.estado = 'ESPERANDO_VERIFICACION';
-                await cliente.save();
-
-                await sock.sendMessage(remoteJid, { text: `✅ Recibido. Aguarda un momento, estamos verificando tu calificación...` });
-
-                const groupVerification = process.env.GROUP_VERIFICATION_ID;
-                if (groupVerification) {
-                    const numVisible = cliente.celularReal || cliente.celular;
-                    const ficha = `⚠️ *SOLICITUD DE VERIFICACIÓN* ⚠️
-👤 Nombre: ${cliente.nombres} ${cliente.apellidos}
-🪪 Cédula: ${cliente.cedula}
-📱 Celular: +${numVisible}
----------------------
-*Copia y pega el texto completo y abajo agrega SI o NO:*
-
-ACCEDE AL CREDITO=`;
-                    await sock.sendMessage(groupVerification, { text: ficha });
-                }
-                return;
-            }
-
-            // 2. Filtros de Estado
             if (cliente.estado === 'ESPERANDO_VERIFICACION') return; 
 
             if (cliente.estado === 'APTO_CREDITO' || cliente.estado === 'RECHAZADO') {
                 if (cliente.historialChat.length > 0) {
-                    const ultimoMsj = cliente.historialChat[cliente.historialChat.length - 1];
-                    if (new Date() - new Date(ultimoMsj.fecha) < 60 * 60 * 1000) return;
+                    const ultimo = cliente.historialChat[cliente.historialChat.length - 1];
+                    if (new Date() - new Date(ultimo.fecha) < 3600000) return;
                 }
-                if (cliente.estado === 'APTO_CREDITO') {
-                    await sock.sendMessage(remoteJid, { text: "Un asesor comercial te llamará en breve. ¡Atento! 📱" });
-                }
+                if (cliente.estado === 'APTO_CREDITO') await sock.sendMessage(remoteJid, { text: "Un asesor te contactará pronto. 📱" });
                 return;
             }
 
-            // 3. IA Conversacional
             if (cliente.estado === 'PENDIENTE' && /hola|info|interesa|quiero|si/i.test(textoUsuario)) {
                 cliente.estado = 'INTERESADO';
             }
 
             cliente.historialChat.push({ rol: 'user', mensaje: textoUsuario });
             await sock.sendPresenceUpdate('composing', remoteJid);
-            
             const respuestaIA = await generarRespuestaIA(textoUsuario, cliente.historialChat, cliente);
+            
+            // Enviar al destino correcto (LID o Normal)
             await sock.sendMessage(remoteJid, { text: respuestaIA });
             
             cliente.historialChat.push({ rol: 'assistant', mensaje: respuestaIA });
             await cliente.save();
 
         } catch (err) {
-            console.error('❌ ERROR FATAL:', err);
+            console.error('❌ ERROR:', err);
         }
     });
 };
 
 const procesarRespuestaAdmin = async (textoAdmin) => {
     try {
-        const matchCelular = textoAdmin.match(/Celular:\s*\+?(\d+)/);
-        const matchDecision = textoAdmin.match(/ACCEDE AL CREDITO=\s*(SI|NO)/i);
+        const matchCel = textoAdmin.match(/Celular:\s*\+?(\d+)/);
+        const matchDec = textoAdmin.match(/ACCEDE AL CREDITO=\s*(SI|NO)/i);
+        if (!matchCel || !matchDec) return;
 
-        if (!matchCelular || !matchDecision) return console.log('⚠️ Formato admin incorrecto.');
-
-        const celular = matchCelular[1];
-        const accedeCredito = matchDecision[1].toUpperCase();
+        const celular = matchCel[1];
+        const decision = matchDec[1].toUpperCase();
         
+        // Buscamos por todos lados
         let cliente = await Cliente.findOne({ 
             $or: [
                 { celular: { $regex: celular.slice(-8) + '$' } },
-                { celularReal: { $regex: celular.slice(-8) + '$' } }
+                { celularReal: { $regex: celular.slice(-8) + '$' } },
+                { lid: celular }
             ]
         });
 
-        if (!cliente) return console.log('❌ Cliente no encontrado para respuesta admin');
+        if (!cliente) return console.log('❌ Cliente no encontrado (Admin)');
 
-        if (accedeCredito === 'SI') {
+        // Preferimos responder al LID si existe (es más directo)
+        const destino = cliente.lid || cliente.celular;
+
+        if (decision === 'SI') {
             cliente.estado = 'APTO_CREDITO';
             await cliente.save();
-            await enviarMensajeTexto(cliente.celular, "✅ ¡Buenas noticias! SÍ accedes al crédito. Un asesor te llamará para la firma.");
+            await enviarMensajeTexto(destino, "✅ ¡SÍ accedes al crédito! Un asesor te llamará.");
             
-            const numParaVentas = cliente.celularReal || cliente.celular;
             if (process.env.GROUP_SALES_ID) {
-                await enviarMensajeTexto(process.env.GROUP_SALES_ID, `💰 *CLIENTE LISTO* 💰\n${cliente.nombres} ${cliente.apellidos}\nCel: +${numParaVentas}\nCédula: ${cliente.cedula}\n> ESCRIBILE`, true);
+                const numVentas = cliente.celularReal || cliente.celular;
+                await enviarMensajeTexto(process.env.GROUP_SALES_ID, `💰 *CLIENTE LISTO* 💰\n${cliente.nombres}\nCel: +${numVentas}\nCédula: ${cliente.cedula}`, true);
             }
         } else {
             cliente.estado = 'RECHAZADO';
             await cliente.save();
-            await enviarMensajeTexto(cliente.celular, "Hola, lamentablemente no calificas para el crédito en este momento. Gracias.");
+            await enviarMensajeTexto(destino, "Lamentablemente no calificas por ahora. Gracias.");
         }
     } catch (e) {
         console.error('Error Admin:', e);
@@ -297,7 +355,8 @@ const enviarMensajeTexto = async (numero, texto, esGrupo = false) => {
     try {
         let jid = numero;
         if (!esGrupo) {
-             jid = numero.includes('@') ? numero : numero + '@s.whatsapp.net';
+            // Si no tiene formato de ID (no tiene @), asumimos whatsapp.net
+            if (!numero.includes('@')) jid = numero + '@s.whatsapp.net';
         }
         await sock.sendMessage(jid, { text: texto });
         return true;
@@ -306,27 +365,20 @@ const enviarMensajeTexto = async (numero, texto, esGrupo = false) => {
 
 const verificarChatsPendientes = async () => {
     if (!sock) return; 
-    console.log('🔍 ESCANEANDO PENDIENTES...');
-
-    const hoy = new Date();
-    hoy.setHours(0,0,0,0);
-
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
     const clientes = await Cliente.find({
         fechaCarga: { $gte: hoy },
         estado: { $in: ['CONTACTADO', 'INTERESADO'] } 
     });
 
     for (const cliente of clientes) {
-        if (!cliente.historialChat || cliente.historialChat.length === 0) continue;
+        if (!cliente.historialChat?.length) continue;
         const ultimo = cliente.historialChat[cliente.historialChat.length - 1];
-
         if (ultimo.rol === 'user') {
-            console.log(`🚑 RECUPERANDO: ${cliente.nombres}`);
             const resp = await generarRespuestaIA(ultimo.mensaje, cliente.historialChat, cliente);
-            await enviarMensajeTexto(cliente.celular, resp);
-            
+            const destino = cliente.lid || cliente.celular;
+            await enviarMensajeTexto(destino, resp);
             cliente.historialChat.push({ rol: 'assistant', mensaje: resp });
-            if (cliente.estado === 'CONTACTADO') cliente.estado = 'INTERESADO';
             await cliente.save();
         }
     }

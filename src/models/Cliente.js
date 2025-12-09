@@ -22,12 +22,11 @@ const ClienteSchema = new mongoose.Schema({
         required: true,
         trim: true 
     },
-    // --- NUEVO CAMPO: Para guardar el 595... si usamos LID ---
-    celularReal: { 
-        type: String, 
-        default: '' 
-    },
-    // ---------------------------------------------------------
+    // --- CAMPOS PARA VINCULACIÓN ---
+    celularReal: { type: String, default: '' }, // Aquí guardamos el 595 original
+    lid: { type: String, default: '' },         // Aquí guardamos el ID raro (185...)
+    esTemporal: { type: Boolean, default: false }, // Para saber si es alguien que estamos identificando
+    // -------------------------------
     estado: {
         type: String,
         enum: ['PENDIENTE', 'CONTACTADO', 'INTERESADO', 'ESPERANDO_VERIFICACION', 'APTO_CREDITO', 'RECHAZADO'],
