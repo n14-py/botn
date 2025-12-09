@@ -23,7 +23,7 @@ document.getElementById('agentNav').innerHTML = `
                     <i class="fas fa-search"></i> Buscador
                 </a>
                 <a href="agente_historial.html" class="nav-item px-5 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-indigo-600 hover:bg-white hover:shadow-sm transition-all flex items-center gap-2">
-                    <i class="fas fa-clock"></i> Historial
+                    <i class="fas fa-history"></i> Historial
                 </a>
             </div>
 
@@ -45,31 +45,32 @@ document.getElementById('agentNav').innerHTML = `
 </div>
 
 <div class="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-100 z-50 pb-safe shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
-    <div class="flex justify-around items-center h-16 px-1">
+    <div class="grid grid-cols-4 h-16 w-full">
         
-        <a href="agente_inicio.html" class="mobile-link relative w-full h-full flex flex-col items-center justify-center group active:scale-95 transition-transform">
-            <div class="icon-container h-8 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all group-hover:bg-slate-50">
-                <i class="fas fa-inbox text-xl text-slate-400 transition-colors"></i>
+        <a href="agente_inicio.html" class="mobile-link flex flex-col items-center justify-center h-full w-full group active:bg-slate-50 transition-colors">
+            <div class="icon-container h-7 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all">
+                <i class="fas fa-inbox text-lg text-slate-400 transition-colors"></i>
             </div>
             <span class="text-[10px] font-bold text-slate-400 transition-colors">Revisar</span>
         </a>
 
-        <a href="agente_seguimiento.html" class="mobile-link relative w-full h-full flex flex-col items-center justify-center group active:scale-95 transition-transform">
-            <div class="icon-container h-8 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all group-hover:bg-slate-50">
-                <i class="fab fa-whatsapp text-xl text-slate-400 transition-colors"></i>
+        <a href="agente_seguimiento.html" class="mobile-link flex flex-col items-center justify-center h-full w-full group active:bg-slate-50 transition-colors">
+            <div class="icon-container h-7 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all">
+                <i class="fab fa-whatsapp text-lg text-slate-400 transition-colors"></i>
             </div>
             <span class="text-[10px] font-bold text-slate-400 transition-colors">Contactar</span>
         </a>
 
-        <div class="relative -top-5">
-            <a href="agente_buscador.html" class="h-14 w-14 bg-indigo-600 rounded-2xl rotate-45 flex items-center justify-center shadow-lg shadow-indigo-500/40 active:scale-90 transition-all border-4 border-slate-50 group">
-                <i class="fas fa-search text-white text-xl -rotate-45"></i>
-            </a>
-        </div>
+        <a href="agente_buscador.html" class="mobile-link flex flex-col items-center justify-center h-full w-full group active:bg-slate-50 transition-colors">
+            <div class="icon-container h-7 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all">
+                <i class="fas fa-search text-lg text-slate-400 transition-colors"></i>
+            </div>
+            <span class="text-[10px] font-bold text-slate-400 transition-colors">Buscar</span>
+        </a>
 
-        <a href="agente_historial.html" class="mobile-link relative w-full h-full flex flex-col items-center justify-center group active:scale-95 transition-transform">
-            <div class="icon-container h-8 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all group-hover:bg-slate-50">
-                <i class="fas fa-clock text-xl text-slate-400 transition-colors"></i>
+        <a href="agente_historial.html" class="mobile-link flex flex-col items-center justify-center h-full w-full group active:bg-slate-50 transition-colors">
+            <div class="icon-container h-7 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all">
+                <i class="fas fa-history text-lg text-slate-400 transition-colors"></i>
             </div>
             <span class="text-[10px] font-bold text-slate-400 transition-colors">Historial</span>
         </a>
@@ -132,7 +133,6 @@ document.addEventListener('click', function(e) {
     const link = e.target.closest('a');
     if (link && (link.href.includes('wa.me') || link.href.includes('whatsapp.com'))) {
         e.preventDefault();
-        // Abrir en una nueva ventana/pestaña fuerza al navegador a manejar el intent
         window.open(link.href, '_blank', 'noopener,noreferrer');
     }
 });
