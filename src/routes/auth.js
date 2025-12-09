@@ -3,7 +3,7 @@ const router = express.Router();
 const Usuario = require('../models/Usuario');
 
 // Obtenemos la contraseña del .env, o usamos una por defecto si falla
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_PASS = 'admin123';
 const AGENTE_PASS = 'agente123'; 
 
 // --- FUNCIÓN AUTOMÁTICA: CREAR USUARIOS SI NO EXISTEN ---
