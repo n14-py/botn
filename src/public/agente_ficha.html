@@ -91,7 +91,7 @@
 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Monto Aprobado</label>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Monto Aprobado (Hasta Gs.)</label>
                         <div class="relative">
                             <span class="absolute left-3 top-3 text-slate-400 font-bold">Gs.</span>
                             <input type="text" id="inputMonto" class="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" placeholder="0">
@@ -196,7 +196,6 @@
                             </div>
                         `;
                     });
-                    // Scroll al fondo
                     setTimeout(() => chatContainer.scrollTop = chatContainer.scrollHeight, 100);
                 } else {
                     chatContainer.innerHTML = '<div class="flex h-full items-center justify-center text-slate-400 text-sm italic">Sin historial de chat.</div>';
@@ -210,14 +209,13 @@
             const obs = document.getElementById('inputObs').value;
 
             if (nuevoEstado === 'APTO_CREDITO' && (!montoRaw || parseInt(montoRaw) <= 0)) {
-                return Swal.fire('Alto', 'Debes ingresar un monto aprobado.', 'warning');
+                return Swal.fire('Alto', 'Debes ingresar el monto aprobado (Hasta Gs).', 'warning');
             }
 
-            // Confirmación para rechazo o venta
             if (nuevoEstado === 'RECHAZADO' || nuevoEstado === 'VENTA_CONCRETADA') {
                 const confirm = await Swal.fire({
-                    title: '¿Estás seguro?',
-                    text: nuevoEstado === 'RECHAZADO' ? 'El cliente será descartado.' : '¡Registrarás una venta!',
+                    title: '¿Confirmar?',
+                    text: nuevoEstado === 'RECHAZADO' ? 'El cliente será descartado.' : 'Se registrará como venta finalizada.',
                     icon: 'question',
                     showCancelButton: true,
                     confirmButtonText: 'Sí, confirmar'
@@ -243,9 +241,8 @@
                     timer: 1500,
                     showConfirmButton: false
                 }).then(() => {
-                    // Redirección inteligente
                     if (nuevoEstado === 'APTO_CREDITO') window.location.href = 'agente_seguimiento.html';
-                    else if (nuevoEstado === 'VENTA_CONCRETADA') window.location.href = 'agente_ventas.html';
+                    else if (nuevoEstado === 'VENTA_CONCRETADA') window.location.href = 'agente_inicio.html';
                     else window.location.href = 'agente_inicio.html';
                 });
 

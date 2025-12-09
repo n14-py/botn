@@ -22,8 +22,8 @@ document.getElementById('agentNav').innerHTML = `
                 <a href="agente_buscador.html" class="nav-item px-5 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-white hover:shadow-sm transition-all flex items-center gap-2">
                     <i class="fas fa-search"></i> Buscador
                 </a>
-                <a href="agente_ventas.html" class="nav-item px-5 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-indigo-600 hover:bg-white hover:shadow-sm transition-all flex items-center gap-2">
-                    <i class="fas fa-trophy"></i> Mis Ventas
+                <a href="agente_historial.html" class="nav-item px-5 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:text-indigo-600 hover:bg-white hover:shadow-sm transition-all flex items-center gap-2">
+                    <i class="fas fa-clock"></i> Historial
                 </a>
             </div>
 
@@ -66,13 +66,6 @@ document.getElementById('agentNav').innerHTML = `
                 <i class="fas fa-search text-white text-xl -rotate-45"></i>
             </a>
         </div>
-
-        <a href="agente_ventas.html" class="mobile-link relative w-full h-full flex flex-col items-center justify-center group active:scale-95 transition-transform">
-            <div class="icon-container h-8 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all group-hover:bg-slate-50">
-                <i class="fas fa-trophy text-xl text-slate-400 transition-colors"></i>
-            </div>
-            <span class="text-[10px] font-bold text-slate-400 transition-colors">Logros</span>
-        </a>
 
         <a href="agente_historial.html" class="mobile-link relative w-full h-full flex flex-col items-center justify-center group active:scale-95 transition-transform">
             <div class="icon-container h-8 w-12 rounded-full flex items-center justify-center mb-0.5 transition-all group-hover:bg-slate-50">
@@ -132,3 +125,14 @@ window.logout = function() {
         }
     });
 };
+
+// ⚡ FIX PARA WEB APP (PWA) ⚡
+// Esto detecta clics en enlaces de WhatsApp y fuerza su apertura en la app nativa
+document.addEventListener('click', function(e) {
+    const link = e.target.closest('a');
+    if (link && (link.href.includes('wa.me') || link.href.includes('whatsapp.com'))) {
+        e.preventDefault();
+        // Abrir en una nueva ventana/pestaña fuerza al navegador a manejar el intent
+        window.open(link.href, '_blank', 'noopener,noreferrer');
+    }
+});

@@ -7,7 +7,7 @@ const { generarRespuestaIA } = require('./aiService');
 const { useMongoDBAuthState } = require('./mongoAuthState');
 const { revelarDatos } = require('../utils/secret'); 
 
-// --- 1. CONFIGURACIÓN DE MEMORIA (EL "TRUCO" DE LA HERRAMIENTA) ---
+// --- 1. CONFIGURACIÓN DE MEMORIA ---
 const baileys = require('@whiskeysockets/baileys');
 const makeStore = baileys.makeInMemoryStore || baileys.default?.makeInMemoryStore;
 const store = makeStore ? makeStore({ 
@@ -31,36 +31,22 @@ const obtenerTextoMensaje = (msg) => {
     );
 };
 
-const obtenerTextoCitado = (msg) => {
-    if (!msg.message) return null;
-    const mensajeReal = msg.message.ephemeralMessage?.message || msg.message.viewOnceMessage?.message || msg.message;
-    const quoted = mensajeReal.extendedTextMessage?.contextInfo?.quotedMessage;
-    if (!quoted) return null;
-    return quoted.conversation || quoted.extendedTextMessage?.text || null;
-};
-
-// --- LÓGICA DE FUSIÓN DE CLIENTES (IMPORTANTE) ---
-// Esto ocurre cuando un "Temporal" nos da una cédula que YA existía en la base de datos
+// --- LÓGICA DE FUSIÓN DE CLIENTES ---
 const fusionarClientes = async (clienteTemporal, clienteReal, lid) => {
     console.log(`⚡ FUSIONANDO: Temporal (${clienteTemporal.cedula}) -> Real (${clienteReal.cedula})`);
     
-    // 1. Pasamos el historial del temporal al real para no perder la charla
     if (clienteTemporal.historialChat && clienteTemporal.historialChat.length > 0) {
         clienteReal.historialChat.push(...clienteTemporal.historialChat);
     }
 
-    // 2. Guardamos los datos de conexión en el real
     clienteReal.lid = lid;
-    if (!clienteReal.celularReal) clienteReal.celularReal = clienteReal.celular; // Guardamos el 595 original
-    clienteReal.celular = lid; // Actualizamos para poder responderle
+    if (!clienteReal.celularReal) clienteReal.celularReal = clienteReal.celular; 
+    clienteReal.celular = lid; 
     
-    // 3. Actualizamos estado
     clienteReal.estado = 'ESPERANDO_VERIFICACION';
-    clienteReal.cedulaProporcionada = clienteReal.cedula; // Confirmamos cédula
+    clienteReal.cedulaProporcionada = clienteReal.cedula; 
 
     await clienteReal.save();
-
-    // 4. Borramos el temporal para no tener basura
     await Cliente.deleteOne({ _id: clienteTemporal._id });
     
     return clienteReal;
@@ -70,30 +56,22 @@ const fusionarClientes = async (clienteTemporal, clienteReal, lid) => {
 const identificarOcrearCliente = async (remoteJid, numeroEntrante, pushName, msg) => {
     console.log(`🕵️‍♂️ Procesando ID: ${numeroEntrante} (${pushName})...`);
 
-    // 1. BUSCAR SI YA LO CONOCEMOS (Por LID o Celular)
+    // 1. BUSCAR SI YA LO CONOCEMOS
     let cliente = await Cliente.findOne({ 
         $or: [
             { lid: numeroEntrante }, 
             { celular: { $regex: numeroEntrante + '$' } },
-            // Si es un temporal que creamos hace un rato
             { cedula: `TEMP-${numeroEntrante}` } 
         ]
     });
     if (cliente) return cliente;
 
-    // 2. EL TRUCO DE LA HERRAMIENTA (Agenda de Baileys)
-    // Buscamos si WhatsApp ya sabe quién es este LID
+    // 2. TRUCO DE LA AGENDA
     if (store && store.contacts) {
-        const contacto = Object.values(store.contacts).find(c => c.id === remoteJid || c.lid === remoteJid); // Ajuste aquí para búsqueda exacta
-        
-        // A veces el ID real está en otra propiedad dependiendo de la versión de Baileys
-        // Intentamos buscar cruces en la agenda
+        const contacto = Object.values(store.contacts).find(c => c.id === remoteJid || c.lid === remoteJid);
         if (contacto) {
-           console.log("📒 Contacto encontrado en Store:", contacto);
-           // Si el contacto tiene un 'id' que parece un número normal (sin @lid)
            const posibleNumero = contacto.id?.replace('@s.whatsapp.net', '').replace('@lid', '');
            if (posibleNumero && posibleNumero !== numeroEntrante) {
-               console.log(`💡 Truco Agenda: LID ${numeroEntrante} es ${posibleNumero}`);
                cliente = await Cliente.findOne({ celular: { $regex: posibleNumero + '$' } });
                if (cliente) {
                    cliente.lid = numeroEntrante;
@@ -106,7 +84,7 @@ const identificarOcrearCliente = async (remoteJid, numeroEntrante, pushName, msg
         }
     }
 
-    // 3. MENSAJE SECRETO (Historial)
+    // 3. MENSAJE SECRETO
     if (store) {
         try {
             const historial = await store.loadMessages(remoteJid, 20);
@@ -115,7 +93,6 @@ const identificarOcrearCliente = async (remoteJid, numeroEntrante, pushName, msg
                     const txt = obtenerTextoMensaje(m);
                     const secreto = revelarDatos(txt);
                     if (secreto) {
-                        console.log(`💎 Secreto hallado: ${secreto}`);
                         cliente = await Cliente.findOne({ cedula: secreto });
                         if (cliente) {
                             cliente.lid = numeroEntrante;
@@ -130,15 +107,15 @@ const identificarOcrearCliente = async (remoteJid, numeroEntrante, pushName, msg
         } catch(e) {}
     }
 
-    // 4. SI FALLA TODO -> CREAR CLIENTE TEMPORAL (Para seguir la charla)
-    console.log(`👻 Usuario desconocido. Creando FICHA TEMPORAL para averiguar quién es.`);
+    // 4. CREAR TEMPORAL
+    console.log(`👻 Usuario desconocido. Creando FICHA TEMPORAL.`);
     const nuevoTemporal = new Cliente({
-        cedula: `TEMP-${numeroEntrante}`, // ID temporal único
+        cedula: `TEMP-${numeroEntrante}`, 
         nombres: pushName || "Usuario WhatsApp",
         apellidos: "",
         celular: numeroEntrante,
         lid: numeroEntrante,
-        estado: 'PENDIENTE', // Para que la IA le hable
+        estado: 'PENDIENTE', 
         esTemporal: true
     });
     await nuevoTemporal.save();
@@ -154,7 +131,7 @@ const iniciarWhatsApp = async () => {
         logger: pino({ level: 'silent' }),
         auth: state,
         browser: ["Ubuntu", "Chrome", "20.0.04"], 
-        syncFullHistory: true, // Activamos full history para que el truco de la agenda funcione mejor
+        syncFullHistory: true, 
     });
 
     if (store) store.bind(sock.ev);
@@ -190,12 +167,6 @@ const iniciarWhatsApp = async () => {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Escuchar actualizaciones de contactos (Para llenar la Agenda "Truco")
-    sock.ev.on('contacts.upsert', (contacts) => {
-        // Solo para debug, ver si llegan los datos
-        // console.log(`📒 Sincronizados ${contacts.length} contactos`);
-    });
-
     sock.ev.on('messages.upsert', async ({ messages }) => {
         try {
             const msg = messages[0];
@@ -209,7 +180,7 @@ const iniciarWhatsApp = async () => {
             if (!textoUsuario) return;
             if (/horarios y días|gracias por comunicarte|agenda tu cita|mensaje automático|en breve/i.test(textoUsuario)) return;
 
-            // GRUPO ADMIN
+            // --- LÓGICA DE ADMIN (RESPONDER APROBACIÓN) ---
             if (remoteJid === process.env.GROUP_VERIFICATION_ID) {
                 if (textoUsuario.includes("ACCEDE AL CREDITO=")) await procesarRespuestaAdmin(textoUsuario);
                 return; 
@@ -222,31 +193,23 @@ const iniciarWhatsApp = async () => {
 
             let numeroEntrante = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '').split(':')[0];
 
-            // ============================================================
-            // 🕵️‍♂️ IDENTIFICACIÓN O CREACIÓN
-            // ============================================================
             let cliente = await identificarOcrearCliente(remoteJid, numeroEntrante, pushName, msg);
 
             console.log(`📨 Mensaje de: ${cliente.nombres} (${cliente.esTemporal ? 'TEMPORAL' : 'VERIFICADO'})`);
 
-            // ============================================================
-            // 🧠 LÓGICA DE CÉDULA (EL MOMENTO DE LA VERDAD)
-            // ============================================================
+            // --- DETECCIÓN DE CÉDULA ---
             const matchCI = textoUsuario.match(/\b\d{1,3}(\.?\d{3}){1,2}\b/);
             
             if (matchCI) {
                 const ciLimpia = matchCI[0].replace(/\./g, '');
                 
-                // Si es un cliente TEMPORAL y nos da su cédula, buscamos si existe la REAL
                 if (cliente.esTemporal) {
                     const clienteReal = await Cliente.findOne({ cedula: ciLimpia });
                     
                     if (clienteReal) {
-                        // ¡EXISTE! FUSIONAMOS TODO
                         cliente = await fusionarClientes(cliente, clienteReal, numeroEntrante);
                         await sock.sendMessage(remoteJid, { text: `✅ Gracias ${cliente.nombres}, te he identificado correctamente.` });
                     } else {
-                        // ES NUEVO DE VERDAD. Lo convertimos en real.
                         cliente.cedula = ciLimpia;
                         cliente.esTemporal = false;
                         cliente.nombres = pushName || "Nuevo Cliente";
@@ -254,7 +217,6 @@ const iniciarWhatsApp = async () => {
                     }
                 }
 
-                // PROCESO NORMAL DE VERIFICACIÓN
                 if (cliente.estado !== 'RECHAZADO' && cliente.estado !== 'APTO_CREDITO') {
                     cliente.cedulaProporcionada = ciLimpia;
                     if (cliente.cedula.includes('PENDIENTE')) cliente.cedula = ciLimpia;
@@ -264,19 +226,18 @@ const iniciarWhatsApp = async () => {
 
                     await sock.sendMessage(remoteJid, { text: `✅ Recibido. Verificando calificación...` });
                     
+                    // --- NOTIFICACIÓN AL GRUPO CON FORMATO DE RESPUESTA ---
                     if (process.env.GROUP_VERIFICATION_ID) {
                         const numMostrar = cliente.celularReal || cliente.celular;
+                        // Aquí preparamos el texto para que tú solo tengas que copiar, pegar y llenar
                         await sock.sendMessage(process.env.GROUP_VERIFICATION_ID, { 
-                            text: `⚠️ *VERIFICACIÓN* ⚠️\n👤 ${cliente.nombres}\n🪪 ${cliente.cedula}\n📱 +${numMostrar}\n\nACCEDE AL CREDITO=` 
+                            text: `⚠️ *VERIFICACIÓN* ⚠️\n👤 ${cliente.nombres}\n🪪 ${cliente.cedula}\n📱 +${numMostrar}\n\n👇 COPIA Y RESPONDE 👇\n\nACCEDE AL CREDITO=SI\nHASTA GS:` 
                         });
                     }
                     return;
                 }
             }
 
-            // SI ESTÁ EN MODO TEMPORAL, LA IA DEBE PEDIR CÉDULA
-            // (Esto ya lo hace tu aiService.js si el estado es PENDIENTE)
-            
             if (cliente.estado === 'ESPERANDO_VERIFICACION') return; 
 
             if (cliente.estado === 'APTO_CREDITO' || cliente.estado === 'RECHAZADO') {
@@ -296,7 +257,6 @@ const iniciarWhatsApp = async () => {
             await sock.sendPresenceUpdate('composing', remoteJid);
             const respuestaIA = await generarRespuestaIA(textoUsuario, cliente.historialChat, cliente);
             
-            // Enviar al destino correcto (LID o Normal)
             await sock.sendMessage(remoteJid, { text: respuestaIA });
             
             cliente.historialChat.push({ rol: 'assistant', mensaje: respuestaIA });
@@ -308,16 +268,22 @@ const iniciarWhatsApp = async () => {
     });
 };
 
+// --- FUNCIÓN MEJORADA PARA LEER TU RESPUESTA EN EL GRUPO ---
 const procesarRespuestaAdmin = async (textoAdmin) => {
     try {
-        const matchCel = textoAdmin.match(/Celular:\s*\+?(\d+)/);
+        // 1. Detectar celular (para saber a qué cliente te refieres)
+        const matchCel = textoAdmin.match(/Celular:\s*\+?(\d+)/) || textoAdmin.match(/📱 \+(\d+)/);
+        // 2. Detectar decisión (SI o NO)
         const matchDec = textoAdmin.match(/ACCEDE AL CREDITO=\s*(SI|NO)/i);
+        // 3. Detectar monto (HASTA GS: 5.000.000)
+        const matchMonto = textoAdmin.match(/HASTA GS:?\s*([0-9\.]+)/i);
+
         if (!matchCel || !matchDec) return;
 
         const celular = matchCel[1];
         const decision = matchDec[1].toUpperCase();
+        const montoRaw = matchMonto ? matchMonto[1].replace(/\./g, '') : '0'; // Limpiamos los puntos
         
-        // Buscamos por todos lados
         let cliente = await Cliente.findOne({ 
             $or: [
                 { celular: { $regex: celular.slice(-8) + '$' } },
@@ -328,22 +294,23 @@ const procesarRespuestaAdmin = async (textoAdmin) => {
 
         if (!cliente) return console.log('❌ Cliente no encontrado (Admin)');
 
-        // Preferimos responder al LID si existe (es más directo)
         const destino = cliente.lid || cliente.celular;
 
         if (decision === 'SI') {
             cliente.estado = 'APTO_CREDITO';
+            cliente.montoAprobado = montoRaw; // Guardamos el monto que pusiste en WhatsApp
             await cliente.save();
-            await enviarMensajeTexto(destino, "✅ ¡SÍ accedes al crédito! Un asesor te llamará.");
+            
+            await enviarMensajeTexto(destino, `✅ ¡SÍ accedes al crédito! Tienes aprobado hasta Gs. ${parseInt(montoRaw).toLocaleString('es-PY')}. Un asesor te llamará en breve.`);
             
             if (process.env.GROUP_SALES_ID) {
                 const numVentas = cliente.celularReal || cliente.celular;
-                await enviarMensajeTexto(process.env.GROUP_SALES_ID, `💰 *CLIENTE LISTO* 💰\n${cliente.nombres}\nCel: +${numVentas}\nCédula: ${cliente.cedula}`, true);
+                await enviarMensajeTexto(process.env.GROUP_SALES_ID, `💰 *CLIENTE LISTO* 💰\n${cliente.nombres}\nCel: +${numVentas}\nCédula: ${cliente.cedula}\nAprobado: Gs. ${montoRaw}`, true);
             }
         } else {
             cliente.estado = 'RECHAZADO';
             await cliente.save();
-            await enviarMensajeTexto(destino, "Lamentablemente no calificas por ahora. Gracias.");
+            await enviarMensajeTexto(destino, "Lamentablemente no calificas por ahora para el crédito. Gracias por contactar.");
         }
     } catch (e) {
         console.error('Error Admin:', e);
@@ -355,7 +322,6 @@ const enviarMensajeTexto = async (numero, texto, esGrupo = false) => {
     try {
         let jid = numero;
         if (!esGrupo) {
-            // Si no tiene formato de ID (no tiene @), asumimos whatsapp.net
             if (!numero.includes('@')) jid = numero + '@s.whatsapp.net';
         }
         await sock.sendMessage(jid, { text: texto });

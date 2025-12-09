@@ -134,3 +134,14 @@ window.logout = function() {
         }
     });
 };
+
+// ⚡ FIX PARA WEB APP (PWA) ⚡
+// Esto detecta clics en enlaces de WhatsApp y fuerza su apertura en la app nativa
+document.addEventListener('click', function(e) {
+    const link = e.target.closest('a');
+    if (link && (link.href.includes('wa.me') || link.href.includes('whatsapp.com'))) {
+        e.preventDefault();
+        // Abrir en una nueva ventana/pestaña fuerza al navegador a manejar el intent
+        window.open(link.href, '_blank', 'noopener,noreferrer');
+    }
+});
