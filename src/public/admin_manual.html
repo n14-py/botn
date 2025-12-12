@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <script>
         const sesion = localStorage.getItem('usuario');
@@ -28,7 +27,7 @@
         
         <div class="mb-6">
             <h1 class="text-2xl font-black text-slate-900 tracking-tight">Nuevo Cliente</h1>
-            <p class="text-slate-500 text-sm">Ingreso manual a la base de datos.</p>
+            <p class="text-slate-500 text-sm">Ingreso manual rápido (Solo Celular es obligatorio).</p>
         </div>
 
         <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-6 md:p-8 border border-slate-100">
@@ -36,44 +35,47 @@
                 
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Documento de Identidad *</label>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Celular (WhatsApp) *</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i class="fab fa-whatsapp text-green-500 text-lg"></i>
+                            </div>
+                            <input type="tel" id="celular" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all font-mono text-lg font-bold" placeholder="0981..." required inputmode="tel">
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1 ml-1">Único dato obligatorio.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Nombres (Opcional)</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fas fa-user text-slate-400"></i>
+                                </div>
+                                <input type="text" id="nombres" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all capitalize" placeholder="Ej: Juan">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Apellidos (Opcional)</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fas fa-user-tag text-slate-400"></i>
+                                </div>
+                                <input type="text" id="apellidos" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all capitalize" placeholder="Ej: Perez">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Cédula (Opcional)</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <i class="fas fa-id-card text-slate-400"></i>
                             </div>
-                            <input type="number" id="cedula" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all font-mono text-lg" placeholder="Ej: 1234567" required inputmode="numeric">
+                            <input type="number" id="cedula" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all font-mono text-lg" placeholder="Ej: 1234567" inputmode="numeric">
                         </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Nombres Completos *</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <i class="fas fa-user text-slate-400"></i>
-                            </div>
-                            <input type="text" id="nombres" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all capitalize" placeholder="Ej: Juan Pablo" required>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Apellidos</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <i class="fas fa-user-tag text-slate-400"></i>
-                            </div>
-                            <input type="text" id="apellidos" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all capitalize" placeholder="Ej: Perez Gonzalez">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-2 ml-1">Celular (WhatsApp) *</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <i class="fab fa-whatsapp text-slate-400 text-lg"></i>
-                            </div>
-                            <input type="tel" id="celular" class="block w-full pl-11 pr-4 py-4 bg-slate-50 border-0 rounded-xl text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 transition-all font-mono text-lg" placeholder="0981..." required inputmode="tel">
-                        </div>
-                        <p class="text-[10px] text-slate-400 mt-1 ml-1">El sistema lo convertirá a formato internacional (595...) automáticamente.</p>
+                        <p class="text-[10px] text-slate-400 mt-1 ml-1">Si la dejas vacía, se generará una temporal.</p>
                     </div>
                 </div>
 
@@ -99,12 +101,22 @@
             btn.disabled = true;
             btn.classList.add('opacity-75');
 
-            const cliente = {
-                cedula: document.getElementById('cedula').value,
-                nombres: document.getElementById('nombres').value,
-                apellidos: document.getElementById('apellidos').value,
-                celular: document.getElementById('celular').value
-            };
+            // Capturar valores
+            let cedula = document.getElementById('cedula').value.trim();
+            let nombres = document.getElementById('nombres').value.trim();
+            let apellidos = document.getElementById('apellidos').value.trim();
+            const celular = document.getElementById('celular').value.trim();
+
+            // Lógica de Autocompletado si faltan datos
+            if (!cedula) {
+                // Generar ID temporal basado en el celular para que no choque
+                cedula = `MANUAL-${celular.replace(/\D/g, '')}`;
+            }
+            if (!nombres) {
+                nombres = "Cliente Sin Nombre";
+            }
+
+            const cliente = { cedula, nombres, apellidos, celular };
 
             try {
                 const res = await fetch('/api/clientes', {
@@ -114,19 +126,16 @@
                 });
 
                 if (res.ok) {
-                    // Feedback positivo
                     Swal.fire({
                         icon: 'success',
                         title: '¡Guardado!',
-                        text: 'El cliente se ha añadido correctamente.',
-                        timer: 2000,
+                        text: nombres === "Cliente Sin Nombre" ? 'Se guardó con nombre genérico.' : 'Cliente añadido correctamente.',
+                        timer: 1500,
                         showConfirmButton: false,
-                        background: '#fff',
                         customClass: { popup: 'rounded-2xl' }
                     });
                     document.getElementById('manualForm').reset();
-                    // Focus automático al primer campo para cargar otro rápido
-                    document.getElementById('cedula').focus();
+                    document.getElementById('celular').focus();
                 } else {
                     const data = await res.json();
                     throw new Error(data.msg || 'Error al guardar');
@@ -135,7 +144,7 @@
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: 'No se pudo guardar el cliente. Verifique si la cédula ya existe.',
+                    text: 'No se pudo guardar. Verifique si el número o cédula ya existen.',
                     customClass: { popup: 'rounded-2xl' }
                 });
             } finally {

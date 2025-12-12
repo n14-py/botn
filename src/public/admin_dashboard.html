@@ -160,27 +160,21 @@
     <script>
         async function cargarDashboard() {
             try {
-                const res = await fetch('/api/clientes');
-                const data = await res.json();
-                const total = data.length;
+                // 1. Pedimos las estadísticas REALES al nuevo endpoint (Solución al conteo falso)
+                const resStats = await fetch('/api/clientes/stats');
+                const stats = await resStats.json();
 
-                // Filtros según tus nuevos estados lógicos
-                const pendientes = data.filter(c => c.estado === 'PENDIENTE').length;
-                const verificacion = data.filter(c => c.estado === 'ESPERANDO_VERIFICACION').length;
-                const ventas = data.filter(c => c.estado === 'VENTA_CONCRETADA').length;
-                const aptos = data.filter(c => c.estado === 'APTO_CREDITO').length;
-
-                // Actualizar números con animación simple
-                animateValue("kpiTotal", 0, total, 1000);
-                animateValue("kpiPendientes", 0, pendientes, 1000);
-                animateValue("kpiVerificacion", 0, verificacion, 1000);
-                animateValue("kpiVentas", 0, ventas, 1000);
+                // Actualizar números (Ahora sí saldrán los 1884 o los que tengas reales)
+                animateValue("kpiTotal", 0, stats.total, 1000);
+                animateValue("kpiPendientes", 0, stats.pendientes, 1000);
+                animateValue("kpiVerificacion", 0, stats.verificacion, 1000);
+                animateValue("kpiVentas", 0, stats.ventas, 1000);
 
                 // Barras de progreso
-                if(total > 0) {
-                    setBar('barPendiente', 'txtPorc1', pendientes, total);
-                    setBar('barVerif', 'txtPorc2', verificacion, total);
-                    setBar('barAptos', 'txtPorc3', aptos, total);
+                if(stats.total > 0) {
+                    setBar('barPendiente', 'txtPorc1', stats.pendientes, stats.total);
+                    setBar('barVerif', 'txtPorc2', stats.verificacion, stats.total);
+                    setBar('barAptos', 'txtPorc3', stats.aptos, stats.total);
                 }
 
             } catch (error) {
@@ -201,7 +195,7 @@
             let current = start;
             let increment = end > start ? 1 : -1;
             let stepTime = Math.abs(Math.floor(duration / range));
-            // Si hay muchos datos, aceleramos
+            // Si hay muchos datos, aceleramos para que no tarde una eternidad
             if (stepTime < 10) { stepTime = 10; increment = Math.ceil(range / (duration / 10)); }
             
             let obj = document.getElementById(id);
@@ -216,6 +210,8 @@
         }
 
         cargarDashboard();
+        // Auto-refresh para ver cambios en vivo
+        setInterval(cargarDashboard, 10000);
     </script>
 </body>
 </html>

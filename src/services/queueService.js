@@ -1,9 +1,24 @@
 const Cliente = require('../models/Cliente');
 const Config = require('../models/Config'); // Importamos la configuración
-const { enviarMensajeTexto } = require('./whatsappService');
-const { ocultarDatos } = require('../utils/secret'); // <--- NUEVA IMPORTACIÓN (EL CÓDIGO INVISIBLE)
+const { enviarMensajeTexto, getStatus } = require('./whatsappService'); // Importamos getStatus para verificar conexión
+const { ocultarDatos } = require('../utils/secret'); // Importamos el ocultador de datos
 
 let procesando = false;
+
+// --- HELPER: CORREGIR NÚMEROS DE PARAGUAY ---
+// Esto es vital. Si intentas enviar a 0981... WhatsApp no lo entrega.
+// Tiene que ser 595981...
+const formatearJID = (numero) => {
+    if (!numero) return null;
+    let limpio = numero.toString().replace(/\D/g, ''); // Solo números
+    
+    // Si empieza con 09, cambiamos a 5959
+    if (limpio.startsWith('09')) limpio = '595' + limpio.substring(1);
+    // Si empieza con 9 y tiene 9 dígitos, agregamos 595
+    else if (limpio.startsWith('9') && limpio.length === 9) limpio = '595' + limpio;
+    
+    return limpio; // Retorna ej: 595981...
+};
 
 // Genera una espera aleatoria (Anti-Ban)
 const generarDelayAleatorio = (minMinutos, maxMinutos) => {
@@ -27,17 +42,25 @@ const procesarCola = async () => {
     if (procesando) return; 
     procesando = true;
 
-    console.log('🔄 Iniciando procesador de cola (Modo Controlado)...');
+    console.log('🔄 Iniciando procesador de cola (Modo Seguro)...');
 
     const loop = async () => {
         try {
-            // 1. CARGAR REGLAS DEL ADMIN
+            // 1. SEGURIDAD: SI EL BOT NO ESTÁ CONECTADO, PAUSAR
+            // Esto evita rechazos masivos por falta de internet
+            if (getStatus() !== 'connected') {
+                console.log('⚠️ Bot desconectado o cargando. Pausando cola por 30 segundos...');
+                procesando = false;
+                setTimeout(procesarCola, 30000);
+                return;
+            }
+
+            // 2. CARGAR REGLAS
             const config = await obtenerConfiguracion();
             const ahora = new Date();
             const horaActual = ahora.getHours();
 
             // --- REGLA A: RESETEO DIARIO ---
-            // Si la fecha guardada no es hoy (día/mes/año), reseteamos el contador
             const fechaGuardada = new Date(config.fechaUltimoReseteo);
             const esMismoDia = fechaGuardada.getDate() === ahora.getDate() &&
                                fechaGuardada.getMonth() === ahora.getMonth() &&
@@ -46,7 +69,7 @@ const procesarCola = async () => {
             if (!esMismoDia) {
                 console.log('📅 Nuevo día detectado. Reseteando contador de envíos a 0.');
                 config.mensajesEnviadosHoy = 0;
-                config.fechaUltimoReseteo = new Date(); // Importante: resetear fecha también para evitar bucles
+                config.fechaUltimoReseteo = new Date();
                 await config.save();
             }
 
@@ -60,13 +83,14 @@ const procesarCola = async () => {
 
             // --- REGLA C: LÍMITE DIARIO ---
             if (config.mensajesEnviadosHoy >= config.limiteDiario) {
-                console.log(`Cb Límite diario alcanzado (${config.mensajesEnviadosHoy}/${config.limiteDiario}). Pausando hasta mañana...`);
+                console.log(`🛑 Límite diario alcanzado (${config.mensajesEnviadosHoy}/${config.limiteDiario}). Pausando hasta mañana...`);
                 procesando = false;
                 setTimeout(procesarCola, 60 * 60 * 1000); // Revisar en 1 hora
                 return;
             }
 
-            // 2. BUSCAR CLIENTE PENDIENTE
+            // 3. BUSCAR CLIENTE PENDIENTE
+            // Ordenamos por fechaCarga para atender a los más antiguos primero
             const cliente = await Cliente.findOne({ estado: 'PENDIENTE' }).sort({ fechaCarga: 1 });
 
             if (!cliente) {
@@ -76,9 +100,11 @@ const procesarCola = async () => {
                 return;
             }
 
-            if (!cliente.celular) {
-                console.log(`⚠️ Cliente ${cliente._id} sin celular. Marcando error.`);
+            // Validación básica: Si no tiene número o es muy corto, ese sí es un error real.
+            if (!cliente.celular || cliente.celular.length < 6) {
+                console.log(`❌ Cliente ${cliente._id} tiene número inválido. Descartando.`);
                 cliente.estado = 'RECHAZADO';
+                cliente.observacionAgente = 'Número inválido o vacío en base de datos';
                 await cliente.save();
                 setImmediate(loop);
                 return;
@@ -87,7 +113,7 @@ const procesarCola = async () => {
             // Usamos solo el primer nombre
             const primerNombre = cliente.nombres ? cliente.nombres.split(' ')[0] : 'Estimado/a';
 
-            // 3. SISTEMA DE 20 VARIACIONES (Mismo formato, ligeros cambios anti-spam)
+            // 4. SISTEMA DE 20 VARIACIONES (TODAS LAS TUYAS ORIGINALES)
             const variaciones = [
                 // 1. Original
                 `Buenos dias ${primerNombre}, 👋🏼👋🏼📣📣
@@ -273,36 +299,55 @@ Analista Financiero`
             // Elegimos una al azar
             const mensajeFinal = variaciones[Math.floor(Math.random() * variaciones.length)];
 
-            // 🔥 AQUÍ ESTÁ LA MODIFICACIÓN CLAVE: INYECTAMOS LA CÉDULA OCULTA 🔥
+            // 🔥 INYECTAMOS LA CÉDULA OCULTA 🔥
+            // Esto es vital para que el bot sepa quién responde aunque no haya guardado el contacto
             const mensajeConSecreto = ocultarDatos(mensajeFinal, cliente.cedula);
 
-            // 4. INTENTAR ENVÍO
-            console.log(`📤 Enviando a ${primerNombre} (${cliente.celular})... Progreso: ${config.mensajesEnviadosHoy + 1}/${config.limiteDiario}`);
+            // 5. INTENTAR ENVÍO
+            // Corrección de número: forzamos el formato 595 para evitar fantasmas
+            const numeroParaEnviar = formatearJID(cliente.celular);
+
+            console.log(`📤 Enviando a ${primerNombre} (${numeroParaEnviar})... Progreso: ${config.mensajesEnviadosHoy + 1}/${config.limiteDiario}`);
             
-            // Enviamos el mensaje con el secreto invisible
-            const enviado = await enviarMensajeTexto(cliente.celular, mensajeConSecreto);
+            // Enviamos el mensaje corregido
+            const enviado = await enviarMensajeTexto(numeroParaEnviar, mensajeConSecreto);
 
             if (enviado) {
+                console.log('✅ Mensaje entregado al socket.');
                 cliente.estado = 'CONTACTADO';
+                
+                // Si el número en la BD era "098...", lo actualizamos al "595..." real para futuras referencias
+                if (cliente.celular !== numeroParaEnviar) {
+                    cliente.celularReal = numeroParaEnviar;
+                }
+
                 await cliente.save();
 
                 // --- ACTUALIZAR CONTADOR ---
                 config.mensajesEnviadosHoy += 1;
-                await config.save(); // Guardamos el nuevo conteo
+                await config.save();
 
                 // Delay aleatorio (Entre 3 y 6 minutos)
                 const tiempoEspera = generarDelayAleatorio(3, 6); 
                 console.log(`⏳ Esperando ${(tiempoEspera/1000/60).toFixed(1)} minutos para el siguiente...`);
                 setTimeout(loop, tiempoEspera);
             } else {
-                console.log(`⚠️ Falló envío a ${cliente.celular}.`);
-                cliente.estado = 'RECHAZADO'; 
+                // PLAN B: NO RECHAZAR SI FALLA
+                console.log(`⚠️ Falló el envío a ${cliente.celular}. Posible error de red.`);
+                console.log(`👉 El cliente NO será rechazado. Se mueve al final de la cola.`);
+                
+                // Actualizamos la fecha de carga a "ahora" para que se vaya al final de la lista
+                // y probamos con el siguiente cliente.
+                cliente.fechaCarga = new Date();
                 await cliente.save();
+                
+                // Esperamos 10 segundos y seguimos
                 setTimeout(loop, 10000); 
             }
 
         } catch (error) {
             console.error('❌ Error en el loop de la cola:', error);
+            // Si hay un error de código, esperamos 1 min para no saturar la consola
             setTimeout(loop, 60000);
         }
     };
